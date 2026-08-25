@@ -1,0 +1,535 @@
+openapi: 3.0.3
+info:
+  title: Manufacturing AI Cost Intelligence API
+  version: 1.0.0
+  description: >
+    API contract for the Manufacturing AI Cost Intelligence & Autonomous
+    Optimization Platform.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: System
+  - name: AI Execution
+  - name: Costs
+  - name: Budgets
+  - name: Forecasts
+  - name: Anomalies
+  - name: Optimization
+  - name: Models
+  - name: Workloads
+  - name: Policies
+  - name: Governance
+
+paths:
+
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        "200":
+          description: Service is alive
+
+  /ready:
+    get:
+      tags: [System]
+      summary: Readiness check
+      responses:
+        "200":
+          description: Service and required dependencies are ready
+        "503":
+          description: Service is not ready
+
+  /ai/execute:
+    post:
+      tags: [AI Execution]
+      summary: Execute a cost-aware AI workload
+      description: >
+        Routes an AI request through authentication, budget and policy checks,
+        model selection, guardrails and the configured model gateway.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AIExecutionRequest"
+      responses:
+        "200":
+          description: Successful AI execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIExecutionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "409":
+          $ref: "#/components/responses/PolicyConflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /cost/summary:
+    get:
+      tags: [Costs]
+      summary: Get current cost summary
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PlantId"
+        - $ref: "#/components/parameters/DepartmentId"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: Cost summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostSummary"
+
+  /cost/by-model:
+    get:
+      tags: [Costs]
+      summary: Get cost grouped by model
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Model cost breakdown
+
+  /cost/by-agent:
+    get:
+      tags: [Costs]
+      summary: Get cost grouped by agent
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Agent cost breakdown
+
+  /cost/by-plant:
+    get:
+      tags: [Costs]
+      summary: Get cost grouped by plant
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Plant cost breakdown
+
+  /cost/trend:
+    get:
+      tags: [Costs]
+      summary: Get historical cost trend
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+      responses:
+        "200":
+          description: Historical cost trend
+
+  /budgets:
+    get:
+      tags: [Budgets]
+      summary: List budgets
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Budget list
+
+    post:
+      tags: [Budgets]
+      summary: Create a budget
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetCreate"
+      responses:
+        "201":
+          description: Budget created
+
+  /budgets/status:
+    get:
+      tags: [Budgets]
+      summary: Get budget status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Budget status
+
+  /forecasts:
+    get:
+      tags: [Forecasts]
+      summary: Get AI cost forecast
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: horizon_days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        "200":
+          description: Forecast result
+
+  /anomalies:
+    get:
+      tags: [Anomalies]
+      summary: List detected anomalies
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH, CRITICAL]
+      responses:
+        "200":
+          description: Anomaly list
+
+  /optimization/recommendations:
+    get:
+      tags: [Optimization]
+      summary: List optimization recommendations
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Optimization recommendation list
+
+  /optimization/analyze:
+    post:
+      tags: [Optimization]
+      summary: Generate an optimization analysis
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OptimizationAnalyzeRequest"
+      responses:
+        "202":
+          description: Optimization analysis accepted
+
+  /optimization/{id}/approve:
+    post:
+      tags: [Optimization]
+      summary: Approve optimization recommendation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OptimizationId"
+      responses:
+        "200":
+          description: Recommendation approved
+
+  /optimization/{id}/apply:
+    post:
+      tags: [Optimization]
+      summary: Apply approved optimization policy
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OptimizationId"
+      responses:
+        "200":
+          description: Policy activated
+        "409":
+          $ref: "#/components/responses/PolicyConflict"
+
+  /models:
+    get:
+      tags: [Models]
+      summary: List registered models
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: capability
+          in: query
+          schema:
+            type: string
+            enum: [text, vision, multimodal, embedding, speech, coding, reasoning]
+      responses:
+        "200":
+          description: Model registry
+
+  /workloads:
+    get:
+      tags: [Workloads]
+      summary: List AI workloads
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Workload list
+
+  /policies:
+    get:
+      tags: [Policies]
+      summary: List active and historical routing policies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Routing policies
+
+  /governance/audit:
+    get:
+      tags: [Governance]
+      summary: Search audit events
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Audit events
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PlantId:
+      name: plant_id
+      in: query
+      schema:
+        type: string
+
+    DepartmentId:
+      name: department_id
+      in: query
+      schema:
+        type: string
+
+    From:
+      name: from
+      in: query
+      schema:
+        type: string
+        format: date-time
+
+    To:
+      name: to
+      in: query
+      schema:
+        type: string
+        format: date-time
+
+    OptimizationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+
+    AIExecutionRequest:
+      type: object
+      required:
+        - workload_type
+        - business_priority
+      properties:
+        workload_type:
+          type: string
+          enum:
+            - quality_check
+            - predictive_maintenance
+            - supply_chain
+        business_priority:
+          type: string
+          enum: [LOW, NORMAL, HIGH, CRITICAL]
+        plant_id:
+          type: string
+        department_id:
+          type: string
+        request_payload:
+          type: object
+        modality:
+          type: string
+          enum: [text, image, multimodal, structured]
+        quality_requirement:
+          type: number
+          minimum: 0
+          maximum: 1
+        max_cost:
+          type: number
+          minimum: 0
+
+    ExecutionPlan:
+      type: object
+      properties:
+        workload_type:
+          type: string
+        complexity:
+          type: string
+          enum: [SIMPLE, MEDIUM, COMPLEX]
+        selected_model:
+          type: string
+        selected_agent:
+          type: string
+        estimated_cost:
+          type: number
+        max_context_tokens:
+          type: integer
+        max_tool_calls:
+          type: integer
+        routing_policy_version:
+          type: string
+        budget_status:
+          type: string
+        risk_level:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+
+    AIExecutionResponse:
+      type: object
+      properties:
+        request_id:
+          type: string
+        execution_plan:
+          $ref: "#/components/schemas/ExecutionPlan"
+        result:
+          type: object
+        usage:
+          type: object
+          properties:
+            input_tokens:
+              type: integer
+            output_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+        cost:
+          type: object
+          properties:
+            amount:
+              type: number
+            currency:
+              type: string
+            provenance:
+              type: string
+              enum: [ACTUAL, ESTIMATED, UNAVAILABLE]
+        quality_score:
+          type: number
+          nullable: true
+
+    CostSummary:
+      type: object
+      properties:
+        total_cost:
+          type: number
+        currency:
+          type: string
+        total_requests:
+          type: integer
+        total_tokens:
+          type: integer
+        average_cost_per_request:
+          type: number
+        budget_consumed_percent:
+          type: number
+        projected_month_end_cost:
+          type: number
+
+    BudgetCreate:
+      type: object
+      required:
+        - scope_type
+        - scope_id
+        - amount
+        - currency
+        - period
+      properties:
+        scope_type:
+          type: string
+          enum: [ENTERPRISE, PLANT, DEPARTMENT, WORKLOAD, AGENT, MODEL]
+        scope_id:
+          type: string
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          default: INR
+        period:
+          type: string
+          enum: [DAILY, MONTHLY, QUARTERLY, ANNUAL]
+        warning_threshold_percent:
+          type: number
+          default: 80
+        critical_threshold_percent:
+          type: number
+          default: 95
+
+    OptimizationAnalyzeRequest:
+      type: object
+      required:
+        - workload_id
+      properties:
+        workload_id:
+          type: string
+        simulation_only:
+          type: boolean
+          default: true
+        target_saving_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+
+  responses:
+
+    BadRequest:
+      description: Invalid request
+
+    Unauthorized:
+      description: Authentication required
+
+    Forbidden:
+      description: Authorization failed
+
+    ValidationError:
+      description: Request validation failed
+
+    RateLimited:
+      description: Rate limit exceeded
+
+    PolicyConflict:
+      description: Policy or budget prevents requested operation
+
+    InternalError:
+      description: Internal server error
