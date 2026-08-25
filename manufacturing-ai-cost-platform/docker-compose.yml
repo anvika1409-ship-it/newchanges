@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# Development stack.
+#
+# Before the first run:
+#     cp backend/.env.example backend/.env
+#     cp frontend/.env.example frontend/.env
+#
+# No credential appears in this file. Secrets are read from the gitignored
+# .env files at run time (SECURITY.md section 6).
+# ---------------------------------------------------------------------------
+
+name: manufacturing-ai-cost-platform
+
+services:
+  redis:
+    image: redis:7-alpine
+    # Bound to localhost so the development instance is not reachable from the
+    # network. No password is set because it is not exposed; do not copy this
+    # into a deployed environment.
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      # Container-network overrides for anything the .env sets to localhost.
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: sqlite+aiosqlite:////app/data/platform.db
+      CORS_ALLOW_ORIGINS: http://localhost:5173,http://localhost:8080
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # The SQLite file lives on a named volume, never inside a served
+      # directory (SECURITY.md section 21).
+      - backend-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - --silent
+        - http://localhost:8000/api/v1/health
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  backend-data:
