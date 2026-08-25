@@ -70,6 +70,17 @@ Use this precedence order:
 
 AI-generated assumptions are the lowest-confidence source.
 
+Scope of precedence:
+
+- API_CONTRACT.yaml is authoritative for the API surface: endpoints, request
+  and response shapes, status codes.
+- DATABASE_SCHEMA.md is authoritative for persisted field names, field types
+  and storage semantics.
+
+Where a field appears in both, the API must adopt the database type. A type
+disagreement is a defect in the contract, not a licence to store a different
+type.
+
 If required information is missing:
 
 - do not silently guess,
@@ -936,7 +947,7 @@ Suggested ownership:
 api/              → API contract / FastAPI
 orchestrator/     → runtime routing
 policies/         → deterministic policy logic
-guardrails/       → AI/security guardrails
+guardrails/       → AI/security guardrails, tool registry enforcement
 integrations/     → external services including GenAILab
 intelligence/     → ML/analytics
 optimization/     → optimization

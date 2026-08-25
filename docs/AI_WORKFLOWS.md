@@ -24,6 +24,10 @@ Core principle:
 
 ## 2. Primary Runtime Workflow — Quality Check
 
+Large image and document inputs are passed by reference
+(`AIExecutionRequest.input_refs`) and held in object storage. SQLite stores the
+reference only (SECURITY.md section 17, DATABASE_SCHEMA.md section 23).
+
 ```text
 Product Image
     |
@@ -190,6 +194,13 @@ The LLM should reason over structured candidates where possible rather than bein
 ## 5. Cost Investigation LangGraph
 
 LangGraph should manage state and orchestration.
+
+This section and section 6 are authoritative for LangGraph node detail, branch
+conditions and state schema. The graphs in ARCHITECTURE.md section 14 are
+summaries of these.
+
+This workflow runs asynchronously or on a schedule. It is not on the
+`/ai/execute` request path.
 
 ```text
 START
@@ -430,6 +441,11 @@ The feedback loop must not introduce a second expensive AI execution into every 
 ---
 
 ## 10. What-if Simulation Workflow
+
+What-if analysis is a LangGraph workflow (AI_DEVELOPMENT_RULES.md section 4.3).
+The forecast and optimization stages below are ML/statistical steps invoked as
+nodes within that graph; the LLM is used only to explain the comparison, not to
+compute it.
 
 ```text
 User changes assumptions

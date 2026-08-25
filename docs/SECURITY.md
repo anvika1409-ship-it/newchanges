@@ -200,6 +200,9 @@ Do not send an entire database or unrestricted document collection into the mode
 
 Every tool must be registered.
 
+The registry is persisted in the `tools` table (DATABASE_SCHEMA.md section
+11.1). It is not a configuration constant.
+
 Tool registry fields:
 
 ```text
@@ -217,7 +220,8 @@ A model cannot call an unregistered tool.
 
 Tool parameters must be validated server-side.
 
-High-risk tools require approval.
+High-risk tools require approval. The approval is recorded in the `approvals`
+table and decided through `POST /governance/approvals/{id}/decide`.
 
 ---
 
@@ -241,6 +245,7 @@ Never execute generated SQL, shell commands or privileged operations directly fr
 Limits should exist at:
 
 - request
+- model
 - agent
 - workload
 - department
@@ -248,15 +253,20 @@ Limits should exist at:
 - tenant
 - enterprise
 
-Example:
+Budget scopes stored in the `budgets` table are ENTERPRISE, TENANT, PLANT,
+DEPARTMENT, WORKLOAD, AGENT and MODEL.
+
+Request-level limits are not budgets. They live on the routing policy and on
+the request itself:
 
 ```text
-max_cost_per_request
-max_tokens_per_request
-max_tool_calls
-max_context_tokens
-daily_budget
-monthly_budget
+max_cost_per_request            routing_policies
+max_total_tokens_per_request    routing_policies
+max_tool_calls                  routing_policies
+max_context_tokens              routing_policies
+max_cost                        AIExecutionRequest
+daily_budget                    budgets (period = DAILY)
+monthly_budget                  budgets (period = MONTHLY)
 ```
 
 When limits are exceeded:
@@ -269,6 +279,12 @@ BLOCK
 ```
 
 according to policy.
+
+The decision is returned as `execution_plan.budget_status` and persisted as
+`usage_events.budget_decision`.
+
+REQUIRE_APPROVAL causes `/ai/execute` to return 202 with an approval record
+rather than executing. BLOCK returns 409.
 
 ---
 
@@ -301,6 +317,10 @@ Human approval
       v
 Execute
 ```
+
+The approval is created in the `approvals` table and decided by an authorized
+human principal through `POST /governance/approvals/{id}/decide`. A model
+result can never satisfy its own approval.
 
 ---
 
@@ -336,6 +356,11 @@ Monitoring
      +--> fail -> rollback
 ```
 
+Activation, canary traffic share and rollback are carried on the routing
+policy version itself (`status`, `canary_traffic_percent`). Rollback is
+performed through `POST /optimization/{id}/rollback`, which reactivates the
+superseded version rather than deleting the current one.
+
 Every policy change must be auditable.
 
 ---
@@ -357,6 +382,9 @@ after_state
 reason
 approval
 ```
+
+`approval` is stored as `audit_events.approval_id` referencing the `approvals`
+table.
 
 Examples:
 - budget changed
