@@ -615,6 +615,24 @@ paths:
           schema:
             type: string
             enum: [text, image, multimodal, structured]
+        - name: enabled
+          in: query
+          description: >
+            Filter by enabled status. Omit to return both enabled and disabled
+            models; a disabled model is retained for historical telemetry joins
+            but is never selected for execution.
+          schema:
+            type: boolean
+        - name: workload_type
+          in: query
+          description: >
+            Return only models compatible with this workload type, per the
+            capability requirements in AI_WORKFLOWS.md section 1. Implies
+            enabled=true. An unrecognised value returns no models rather than
+            falling back to the full registry.
+          schema:
+            type: string
+            enum: [quality_check, predictive_maintenance, supply_chain]
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:
@@ -634,6 +652,31 @@ paths:
           $ref: "#/components/responses/InternalError"
 
   /models/{id}:
+    get:
+      tags: [Models]
+      summary: Get a registered model
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: Model registry entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Model"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        default:
+          $ref: "#/components/responses/InternalError"
+
     patch:
       tags: [Models]
       summary: Update registry metadata for a model
@@ -1631,6 +1674,12 @@ components:
 
     Model:
       type: object
+      description: >
+        A registry entry. Cost, context, quality and latency fields are null
+        wherever the value is unknown; null is not zero and must not be
+        displayed as one (AI_DEVELOPMENT_RULES.md sections 41 and 42). Likewise
+        a null supports_* flag means "unknown", not "unsupported", and never
+        satisfies a capability requirement.
       properties:
         id:
           type: string
@@ -1653,6 +1702,11 @@ components:
         cost_unit:
           type: string
           nullable: true
+        has_known_pricing:
+          type: boolean
+          description: >
+            True only when both rates and the unit are present. Cost cannot be
+            computed for this model otherwise.
         max_context_tokens:
           type: integer
           nullable: true

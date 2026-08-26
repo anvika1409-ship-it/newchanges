@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,6 +49,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.model_gateway = gateway
     app.state.identity_adapter = identity_adapter
 
+    if settings.model_registry_seed_on_startup:
+        await _register_seed_models(database, settings)
+
     logger.info(
         "application_started",
         extra={
@@ -64,6 +68,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await cache.disconnect()
         await database.disconnect()
         logger.info("application_stopped")
+
+
+async def _register_seed_models(database: Database, settings: Settings) -> None:
+    """Register configured models that are not in the registry yet.
+
+    Insert-only: an existing row is never overwritten, so pricing or quality an
+    operator has filled in survives a restart. A seed failure is logged and does
+    not prevent startup — the registry stays queryable and correctable.
+    """
+    from app.repositories.model_repository import ModelRepository
+    from app.services.model_registry import ModelRegistryService
+
+    try:
+        async with database.session() as session:
+            service = ModelRegistryService(ModelRepository(session))
+            inserted = await service.register_from_seed(
+                Path(settings.model_registry_seed_path)
+            )
+        logger.info("model_registry_startup_seed", extra={"inserted": inserted})
+    except Exception:
+        logger.exception("model_registry_startup_seed_failed")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
