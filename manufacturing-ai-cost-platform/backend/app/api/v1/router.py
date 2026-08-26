@@ -16,12 +16,30 @@ api_router.include_router(system.router)
 api_router.include_router(models.router)
 api_router.include_router(costs.router)
 api_router.include_router(budgets.router)
+from app.api.v1.routes import ai_execution, anomalies, costs, forecasts, optimization, system
+
+try:
+    from app.api.v1.routes import models
+    _HAS_MODELS = True
+except ImportError:
+    _HAS_MODELS = False
+
+api_router = APIRouter()
+api_router.include_router(system.router)
+if _HAS_MODELS:
+    api_router.include_router(models.router)
+api_router.include_router(ai_execution.router)
+api_router.include_router(costs.router)
+api_router.include_router(forecasts.router)
+api_router.include_router(anomalies.router)
+api_router.include_router(optimization.router)
 
 # Not yet implemented — each requires its own contract-conforming router:
 #   /ai/execute          AI Execution
 #   /forecasts           Forecasts
 #   /anomalies           Anomalies
 #   /optimization/*      Optimization
+#   /models*             Models
 #   /workloads /agents   Workloads
 #   /plants /departments Organization
 #   /policies            Policies

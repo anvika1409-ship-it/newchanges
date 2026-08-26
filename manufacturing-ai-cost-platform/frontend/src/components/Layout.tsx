@@ -1,14 +1,18 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import { cn } from '../lib/utils';
 
-const NAV = [{ to: '/status', label: 'Status' }];
+const NAV = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/status', label: 'Status' },
+];
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-full bg-slate-50 dark:bg-slate-900">
-      <header className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+          <span className="font-mono text-sm font-semibold tracking-tight text-foreground">
             Manufacturing AI Cost Intelligence
           </span>
           <nav className="flex gap-4">
@@ -17,9 +21,12 @@ export function Layout({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  isActive
-                    ? 'text-sm font-medium text-blue-700 dark:text-blue-400'
-                    : 'text-sm text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                  cn(
+                    'text-sm transition-colors',
+                    isActive
+                      ? 'font-medium text-primary'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )
                 }
               >
                 {item.label}
@@ -28,7 +35,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+      <main>{children}</main>
     </div>
   );
 }

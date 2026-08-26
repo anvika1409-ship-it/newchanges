@@ -63,6 +63,49 @@ class RoutingPolicyRepository(AsyncRepository[RoutingPolicy]):
         await self.session.flush()
         return policy
 
+    async def create(self, policy: RoutingPolicy) -> RoutingPolicy:
+        """Alias for add."""
+        return await self.add(policy)
+
+    async def create_many(self, policies: list[RoutingPolicy]) -> list[RoutingPolicy]:
+        self.session.add_all(policies)
+        await self.session.flush()
+        return policies
+
+    async def get_active_policy(
+        self, workload_type: str, tenant_id: str | None = None
+    ) -> RoutingPolicy | None:
+        """Get the currently active policy for a workload."""
+        stmt = (
+            select(RoutingPolicy)
+            .where(
+                RoutingPolicy.workload_type == workload_type,
+                RoutingPolicy.status.in_(["ACTIVE", "CANARY"]),
+            )
+            .order_by(RoutingPolicy.version.desc())
+            .limit(1)
+        )
+        if tenant_id is not None:
+            stmt = stmt.where(RoutingPolicy.tenant_id == tenant_id)
+
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def get_latest_version_number(
+        self, workload_type: str, tenant_id: str | None = None
+    ) -> int:
+        """Get highest version number for a workload."""
+        from sqlalchemy import func
+        stmt = select(func.max(RoutingPolicy.version)).where(
+            RoutingPolicy.workload_type == workload_type
+        )
+        if tenant_id is not None:
+            stmt = stmt.where(RoutingPolicy.tenant_id == tenant_id)
+
+        result = await self.session.execute(stmt)
+        max_ver = result.scalar()
+        return max_ver if max_ver is not None else 0
+
     async def set_status(self, policy_id: str, status: str) -> RoutingPolicy | None:
         """Update the status column only (activation/supersede/rollback)."""
         policy = await self.session.get(RoutingPolicy, policy_id)
@@ -71,3 +114,7 @@ class RoutingPolicyRepository(AsyncRepository[RoutingPolicy]):
         policy.status = status
         await self.session.flush()
         return policy
+
+
+# Alias for backward compatibility across modules
+PolicyRepository = RoutingPolicyRepository

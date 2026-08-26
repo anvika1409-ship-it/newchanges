@@ -13,9 +13,10 @@ from app.repositories.model_repository import ModelRepository
 from app.repositories.optimization_repository import (
     ApprovalRepository,
     OptimizationRecommendationRepository,
+    OptimizationRepository,
 )
 from app.repositories.plant_repository import DepartmentRepository, PlantRepository
-from app.repositories.routing_policy_repository import RoutingPolicyRepository
+from app.repositories.routing_policy_repository import PolicyRepository, RoutingPolicyRepository
 from app.repositories.telemetry_repository import CostEventRepository, UsageEventRepository
 from app.repositories.tenant_repository import TenantRepository
 from app.repositories.user_repository import RoleRepository, UserRepository, UserRoleRepository
@@ -34,7 +35,9 @@ __all__ = [
     "ModelRegistryHistoryRepository",
     "ModelRepository",
     "OptimizationRecommendationRepository",
+    "OptimizationRepository",
     "PlantRepository",
+    "PolicyRepository",
     "RoleRepository",
     "RoutingPolicyRepository",
     "TenantRepository",

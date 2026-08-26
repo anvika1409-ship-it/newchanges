@@ -33,8 +33,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 
+import uuid
+
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _gen_uuid() -> str:
+    return str(uuid.uuid4())
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +56,7 @@ class Forecast(Base):
 
     __tablename__ = "forecasts"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_gen_uuid)
     tenant_id: Mapped[str] = mapped_column(
         String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -93,7 +99,7 @@ class Anomaly(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_gen_uuid)
     tenant_id: Mapped[str] = mapped_column(
         String, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -144,7 +150,7 @@ class OptimizationRecommendation(Base):
         ),
     )
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_gen_uuid)
     tenant_id: Mapped[str] = mapped_column(
         String, ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True
     )

@@ -2,15 +2,15 @@ import { Link } from 'react-router-dom';
 
 export function NotFound() {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
-      <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+    <div className="mx-auto flex max-w-[1400px] flex-col items-start gap-3 px-4 py-16 sm:px-6 lg:px-8">
+      <h1 className="font-mono text-lg font-semibold tracking-tight text-foreground">
         Page not found
       </h1>
-      <Link
-        to="/status"
-        className="mt-3 inline-block text-sm text-blue-700 underline dark:text-blue-400"
-      >
-        Back to platform status
+      <p className="text-sm text-muted-foreground">
+        The page you&apos;re looking for doesn&apos;t exist.
+      </p>
+      <Link to="/dashboard" className="text-sm text-primary underline underline-offset-4">
+        Back to the dashboard
       </Link>
     </div>
   );

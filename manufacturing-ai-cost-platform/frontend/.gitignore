@@ -1,0 +1,16 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs / editor / OS
+*.log
+.vite
+.DS_Store
