@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import system
+from app.api.v1.routes import models, system
 
 api_router = APIRouter()
 api_router.include_router(system.router)
+api_router.include_router(models.router)
 
 # Not yet implemented — each requires its own contract-conforming router:
 #   /ai/execute          AI Execution
@@ -21,7 +22,6 @@ api_router.include_router(system.router)
 #   /forecasts           Forecasts
 #   /anomalies           Anomalies
 #   /optimization/*      Optimization
-#   /models*             Models
 #   /workloads /agents   Workloads
 #   /plants /departments Organization
 #   /policies            Policies

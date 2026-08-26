@@ -114,6 +114,14 @@ class Settings(BaseSettings):
     oidc_jwks_url: str | None = None
     oidc_audience: str | None = None
 
+    # --- Model registry ----------------------------------------------------
+    # Seed data is configuration, not code. Point this at a different file to
+    # register a different model set without changing the application.
+    model_registry_seed_path: str = "app/db/seed/genailab_models.json"
+    #: Registers seeded models that are not present yet. Never overwrites an
+    #: existing row, so operator-supplied pricing survives a redeploy.
+    model_registry_seed_on_startup: bool = True
+
     # --- API security ------------------------------------------------------
     cors_allow_origins: CsvList
     max_request_bytes: int = 10 * 1024 * 1024
