@@ -197,9 +197,9 @@ class PolicyLifecycleService:
         new_policy = RoutingPolicyRecord(
             tenant_id=tenant_id,
             workload_type=workload_type,
-            complexity="STANDARD",
+            complexity="medium",
             business_priority="NORMAL",
-            selected_model_id="gpt-4o-mini" if "Mini" in rec.recommended_strategy else "claude-3-5-sonnet",
+            selected_model_id=None,
             version=new_version,
             status=policy_status,
             canary_traffic_percent=canary_traffic_percent if policy_status == PolicyStatus.CANARY else None,

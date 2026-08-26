@@ -115,11 +115,14 @@ async def analyze_optimization(
     )
 
     rec_id = f"rec-{uuid.uuid4().hex[:8]}"
+    principal = getattr(request.state, "principal", None)
+    tenant_id = getattr(principal, "tenant_id", "tenant-1") or "tenant-1"
 
     async with database.session() as session:
         repo = OptimizationRepository(session)
         record = OptimizationRecommendationRecord(
             id=rec_id,
+            tenant_id=tenant_id,
             workload_id=body.workload_id,
             current_strategy=analysis_result.current_strategy,
             recommended_strategy=analysis_result.recommended_strategy,

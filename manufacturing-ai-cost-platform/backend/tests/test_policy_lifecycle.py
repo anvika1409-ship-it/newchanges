@@ -69,10 +69,26 @@ def viewer_headers(identity_adapter: DevelopmentIdentityAdapter) -> dict[str, st
 
 @pytest_asyncio.fixture
 async def app_instance(settings: Settings):
+    from app.db.models.control_plane import Department, Plant, Tenant, Workload
+
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         async with app.state.database.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        async with app.state.database.session() as session:
+            t = Tenant(id=TENANT_1, name="Tenant 1", status="ACTIVE")
+            p = Plant(id="plant-1", tenant_id=TENANT_1, name="Plant 1", status="ACTIVE")
+            d = Department(id="dept-1", plant_id="plant-1", name="Dept 1", status="ACTIVE")
+            wl = Workload(
+                id="predictive_maintenance",
+                plant_id="plant-1",
+                department_id="dept-1",
+                name="PM",
+                workload_type="predictive_maintenance",
+                status="ACTIVE",
+            )
+            session.add_all([t, p, d, wl])
+            await session.commit()
         yield app
 
 
@@ -114,9 +130,9 @@ async def _seed_active_policy(session, version: int = 1) -> RoutingPolicyRecord:
         id=f"pol-v{version}-001",
         tenant_id=TENANT_1,
         workload_type="predictive_maintenance",
-        complexity="STANDARD",
+        complexity="medium",
         business_priority="NORMAL",
-        selected_model_id="claude-3-5-sonnet",
+        selected_model_id=None,
         version=version,
         status=PolicyStatus.ACTIVE,
         reason="Initial baseline policy",

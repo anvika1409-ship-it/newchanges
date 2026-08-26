@@ -48,10 +48,15 @@ def auth_headers(identity_adapter: DevelopmentIdentityAdapter) -> dict[str, str]
 
 @pytest_asyncio.fixture
 async def app_instance(settings: Settings):
+    from app.db.models.control_plane import Tenant
+
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         async with app.state.database.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        async with app.state.database.session() as session:
+            session.add(Tenant(id="tenant-1", name="Tenant 1", status="ACTIVE"))
+            await session.commit()
         yield app
 
 
@@ -278,8 +283,8 @@ class TestCostAnalyticsWorker:
             result = await worker.run_forecasting_job(
                 historical_daily_costs=history,
                 scope_type="TENANT",
-                scope_id="tenant-prod",
-                tenant_id="tenant-prod",
+                scope_id="tenant-1",
+                tenant_id="tenant-1",
                 horizon_days=7,
             )
 
@@ -288,7 +293,7 @@ class TestCostAnalyticsWorker:
 
             # Verify persisted in database
             records, count = await forecast_repo.list_forecasts(
-                scope_type="TENANT", scope_id="tenant-prod"
+                scope_type="TENANT", scope_id="tenant-1"
             )
             assert count == 7
             assert len(records) == 7

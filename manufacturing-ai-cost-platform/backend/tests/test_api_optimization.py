@@ -48,10 +48,34 @@ def auth_headers(identity_adapter: DevelopmentIdentityAdapter) -> dict[str, str]
 
 @pytest_asyncio.fixture
 async def app_instance(settings: Settings):
+    from app.db.models.control_plane import Department, Plant, Tenant, Workload
+
     app = create_app(settings)
     async with app.router.lifespan_context(app):
         async with app.state.database.engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+        async with app.state.database.session() as session:
+            t = Tenant(id="tenant-1", name="Tenant 1", status="ACTIVE")
+            p = Plant(id="plant-1", tenant_id="tenant-1", name="Plant 1", status="ACTIVE")
+            d = Department(id="dept-1", plant_id="plant-1", name="Dept 1", status="ACTIVE")
+            wl1 = Workload(
+                id="predictive_maintenance",
+                plant_id="plant-1",
+                department_id="dept-1",
+                name="PM",
+                workload_type="predictive_maintenance",
+                status="ACTIVE",
+            )
+            wl2 = Workload(
+                id="vision_inspection",
+                plant_id="plant-1",
+                department_id="dept-1",
+                name="VI",
+                workload_type="quality_check",
+                status="ACTIVE",
+            )
+            session.add_all([t, p, d, wl1, wl2])
+            await session.commit()
         yield app
 
 

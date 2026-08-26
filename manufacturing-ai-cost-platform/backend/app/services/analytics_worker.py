@@ -108,9 +108,10 @@ class CostAnalyticsWorker:
 
         # Persist detected anomalies if repository is available
         if self._anomaly_repo is not None and anomalies:
+            eff_tenant_id = tenant_id or "tenant-1"
             records = [
                 AnomalyRecord(
-                    tenant_id=tenant_id,
+                    tenant_id=eff_tenant_id,
                     timestamp=a.timestamp or ts,
                     scope_type=a.scope_type,
                     scope_id=a.scope_id,
