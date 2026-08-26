@@ -25,6 +25,7 @@ from app.core.middleware import MaxBodySizeMiddleware, RequestIDMiddleware
 from app.db.session import Database
 from app.integrations.llm.client import build_model_gateway
 from app.security.identity import build_identity_adapter
+from app.security.route_protection import verify_route_protection
 
 logger = get_logger(__name__)
 
@@ -105,6 +106,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+    # Deny by default: an API route that forgot its authentication dependency
+    # aborts startup rather than serving traffic (SECURITY.md section 18).
+    # Runs after the router is mounted so it sees the final route table.
+    verify_route_protection(app, api_prefix=settings.api_v1_prefix)
+
     return app
 
 

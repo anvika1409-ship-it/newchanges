@@ -39,7 +39,7 @@ manufacturing-ai-cost-platform/
 │   │   ├── db/             engine, session, declarative base
 │   │   ├── cache/          Redis abstraction
 │   │   ├── integrations/   external services, incl. GenAILab
-│   │   ├── security/       authn/authz hooks
+│   │   ├── security/       authn, JWT, RBAC, tenant/plant/dept scope
 │   │   ├── repositories/   persistence abstraction
 │   │   ├── telemetry/      cost/quality/trace collection
 │   │   ├── orchestrator/   runtime routing
@@ -137,7 +137,20 @@ cd frontend && npm run build
 - Async SQLAlchemy database abstraction with the required SQLite pragmas
 - Redis abstraction (connection and health only)
 - Model gateway interface with GenAILab and mock implementations
-- Initial security hooks: bearer scheme, scoped principal, role guard
+- Security foundation:
+  - bearer scheme and JWT validation (signature, expiry, not-before, issuer,
+    audience; `alg: none` refused)
+  - pluggable identity adapters — a development adapter that signs and verifies
+    locally, and an OIDC seam that fails loudly rather than faking validation
+  - RBAC over the six roles, with role-to-permission policy stated once in
+    `app/security/permissions.py`
+  - tenant resolution from the authenticated principal; a client-supplied
+    tenant is refused, never silently ignored
+  - authorization at endpoint level and resource level, and an `AuthorizedScope`
+    query constraint for collection reads (tenant / plant / department)
+  - startup audit that refuses to serve if any API route lacks authentication
+  - security events for authentication, authorization and tenant-isolation
+    failures
 - Alembic wired for async migrations
 - Dockerfiles, compose stack, `.env.example` files
 
@@ -153,7 +166,10 @@ No business functionality exists yet. Specifically absent:
 - the cost-aware orchestrator, policy engine and guardrail layers
 - telemetry emission — no execution path exists yet to emit it
 - LangGraph workflows
-- enterprise OIDC authentication
+- enterprise OIDC authentication (the adapter is a seam that raises; wiring it
+  up needs the deployment's issuer, JWKS endpoint, audience and claim mapping)
+- the `users`, `roles` and `user_roles` tables, and therefore any reconciliation
+  of token claims against stored role assignments
 
 ### Known open items
 
@@ -164,6 +180,18 @@ No business functionality exists yet. Specifically absent:
 - **Control plane coverage.** `ARCHITECTURE.md` section 5 claims management of
   tenants, users, roles, guardrail policies and audit configuration; the
   contract does not yet cover them.
+- **Role-to-permission matrix.** `SECURITY.md` section 4 names the six roles and
+  requires authorization at endpoint and resource level, but states no mapping
+  from role to operation, and `API_CONTRACT.yaml` declares only `bearerAuth` on
+  each secured operation. The defaults in
+  `backend/app/security/permissions.py::ROLE_PERMISSIONS` are a documented
+  assumption derived from the role names, the contract's operations and the one
+  worked example in section 4. Confirm the intended matrix and correct it there;
+  no call site restates it.
+- **User and role persistence.** Role assignments currently arrive as token
+  claims. The `users` and `user_roles` tables (`DATABASE_SCHEMA.md` sections 4
+  and 6) are not implemented, so nothing yet reconciles a token's claims against
+  stored assignments, and `tenants.status` is not checked.
 
 ---
 

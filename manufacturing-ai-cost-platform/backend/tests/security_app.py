@@ -20,11 +20,19 @@ from app.core.errors import register_exception_handlers
 from app.core.middleware import RequestIDMiddleware
 from app.security.authorization import (
     authorize_resource,
+    authorize_resource_permission,
     reject_client_tenant_override,
 )
-from app.security.dependencies import CurrentPrincipal, RequireRoles
+from app.security.dependencies import (
+    CurrentPrincipal,
+    RequirePermission,
+    RequireRoles,
+    RequireScope,
+)
 from app.security.identity import build_identity_adapter
+from app.security.permissions import Permission
 from app.security.principal import Principal, ResourceScope, Role
+from app.security.scope import AuthorizedScope
 
 router = APIRouter()
 
@@ -87,6 +95,96 @@ async def cost_summary(
     """Tenant resolution: a client-supplied tenant is never trusted."""
     effective = reject_client_tenant_override(principal, tenant_id)
     return {"tenant_id": effective}
+
+
+@router.get(
+    "/budget-manage",
+    dependencies=[Depends(RequirePermission(Permission.BUDGET_MANAGE))],
+)
+async def budget_manage() -> dict[str, str]:
+    """Endpoint-level RBAC expressed as a permission."""
+    return {"status": "ok"}
+
+
+@router.get(
+    "/model-manage",
+    dependencies=[Depends(RequirePermission(Permission.MODEL_MANAGE))],
+)
+async def model_manage() -> dict[str, str]:
+    """A different permission, so role separation is observable."""
+    return {"status": "ok"}
+
+
+@router.get("/budgets-by-permission/{budget_id}")
+async def read_budget_by_permission(
+    budget_id: str,
+    principal: Annotated[Principal, Depends(RequirePermission(Permission.BUDGET_READ))],
+    tenant_id: Annotated[str, Query()],
+    plant_id: Annotated[str | None, Query()] = None,
+    department_id: Annotated[str | None, Query()] = None,
+) -> dict[str, str]:
+    """Endpoint RBAC *and* resource-level scope, both driven by a permission.
+
+    ``tenant_id`` and ``plant_id`` stand in for the ownership columns that would
+    be read from the stored record.
+    """
+    authorize_resource_permission(
+        principal,
+        ResourceScope(
+            tenant_id=tenant_id, plant_id=plant_id, department_id=department_id
+        ),
+        Permission.BUDGET_READ,
+    )
+    return {"budget_id": budget_id, "tenant_id": tenant_id}
+
+
+@router.get("/budget-write/{budget_id}")
+async def write_budget(
+    budget_id: str,
+    principal: Annotated[
+        Principal, Depends(RequirePermission(Permission.BUDGET_MANAGE))
+    ],
+    tenant_id: Annotated[str, Query()],
+    plant_id: Annotated[str | None, Query()] = None,
+) -> dict[str, str]:
+    """A write, so a read-only assignment elsewhere must not authorize it."""
+    authorize_resource_permission(
+        principal,
+        ResourceScope(tenant_id=tenant_id, plant_id=plant_id),
+        Permission.BUDGET_MANAGE,
+    )
+    return {"budget_id": budget_id}
+
+
+@router.get("/cost-scope")
+async def cost_scope(
+    scope: Annotated[AuthorizedScope, Depends(RequireScope(Permission.COST_READ))],
+) -> dict[str, object]:
+    """Collection query: the caller receives a constraint, not a row set.
+
+    The response echoes the resolved branches so a test can assert exactly what
+    a repository would be told to filter on.
+    """
+    return {
+        "tenant_id": scope.tenant_id,
+        "is_tenant_wide": scope.is_tenant_wide,
+        "branches": [
+            {
+                "tenant_id": branch.tenant_id,
+                "plant_id": branch.plant_id,
+                "department_id": branch.department_id,
+            }
+            for branch in scope.branches
+        ],
+    }
+
+
+@router.get("/audit-scope")
+async def audit_scope(
+    scope: Annotated[AuthorizedScope, Depends(RequireScope(Permission.AUDIT_READ))],
+) -> dict[str, object]:
+    """A scope for a permission most roles do not hold."""
+    return {"tenant_id": scope.tenant_id}
 
 
 def create_security_test_app(settings: Settings) -> FastAPI:
