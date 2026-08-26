@@ -27,6 +27,11 @@ dependencies = [
     # Outbound HTTP and LLM gateway client
     "httpx>=0.27,<0.29",
     "openai>=1.55,<3.0",
+
+    # Stateful multi-step AI workflows (ARCHITECTURE.md section 14).
+    # Imported by app/intelligence/cost_investigation_graph.py, which could not
+    # be collected while this was undeclared.
+    "langgraph>=0.2,<2.0",
 ]
 
 [project.optional-dependencies]

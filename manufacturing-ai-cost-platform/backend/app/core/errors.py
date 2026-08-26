@@ -71,7 +71,7 @@ class NotFoundError(AppError):
 
 
 class PayloadTooLargeError(AppError):
-    status_code = status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+    status_code = status.HTTP_413_CONTENT_TOO_LARGE
     code = "payload_too_large"
     message = "Request body exceeds the configured limit"
 
@@ -145,7 +145,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         }
         logger.info("request_validation_failed", extra={"status": 422})
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=error_payload("validation_error", "Request validation failed", details),
         )
 

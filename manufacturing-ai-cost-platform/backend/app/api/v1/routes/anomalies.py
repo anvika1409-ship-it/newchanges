@@ -12,11 +12,13 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.api.v1.schemas.analytics import Anomaly, AnomalyList, PageInfo
 from app.repositories.anomaly_repository import AnomalyRepository
 
-try:
-    from app.security.dependencies import get_current_principal
-    _AUTH_DEPS = [Depends(get_current_principal)]
-except ImportError:
-    _AUTH_DEPS = []
+# Imported unconditionally. A try/except around this import turned a
+# protected endpoint into an open one whenever the import failed, which is a
+# silent authentication bypass (SECURITY.md section 18,
+# AI_DEVELOPMENT_RULES.md section 26).
+from app.security.dependencies import get_current_principal
+
+_AUTH_DEPS = [Depends(get_current_principal)]
 
 router = APIRouter(tags=["Anomalies"])
 

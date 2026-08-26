@@ -7,6 +7,8 @@ endpoint has been invented ahead of its implementation.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 
 from app.cache.redis_client import NullCache
@@ -32,32 +34,45 @@ def test_contract_routes_are_registered_under_the_prefix(settings: Settings) -> 
     assert f"{settings.api_v1_prefix}/ready" in paths
 
 
-def test_no_undocumented_business_routes_are_registered(settings: Settings) -> None:
-    """Only system and implemented business operations are registered.
+def _contract_operations() -> set[tuple[str, str]]:
+    """(method, path) pairs declared in API_CONTRACT.yaml."""
+    import yaml
 
-    Business endpoints must arrive with their contract-conforming
-    implementation, not as placeholders.
+    contract_path = Path(__file__).resolve().parents[2] / "docs" / "API_CONTRACT.yaml"
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    return {
+        (method.upper(), path)
+        for path, operations in contract["paths"].items()
+        for method in operations
+        if method in {"get", "post", "put", "patch", "delete"}
+    }
+
+
+def test_no_undocumented_endpoint_is_registered(settings: Settings) -> None:
+    """Every registered route must exist in API_CONTRACT.yaml.
+
+    Endpoints are never invented in code (AI_DEVELOPMENT_RULES.md sections 2
+    and 18). Compared against the contract rather than a hand-maintained list,
+    so it keeps working as endpoints land and still fails the moment one
+    appears that the contract does not declare.
     """
     app = create_app(settings)
-    api_paths = {
-        route.path  # type: ignore[attr-defined]
-        for route in app.routes
-        if getattr(route, "path", "").startswith(settings.api_v1_prefix)
-    }
-    assert paths == {
-        "/health",
-        "/ready",
-        "/models",
-        "/models/{id}",
-        "/cost/summary",
-        "/cost/by-model",
-        "/cost/by-agent",
-        "/cost/by-plant",
-        "/cost/trend",
-        "/budgets",
-        "/budgets/{id}",
-        "/budgets/status",
-    }
+    prefix = settings.api_v1_prefix
+
+    registered: set[tuple[str, str]] = set()
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        if not path.startswith(prefix):
+            continue
+        for method in getattr(route, "methods", set()) or set():
+            if method in {"HEAD", "OPTIONS"}:
+                continue
+            registered.add((method, path[len(prefix) :]))
+
+    undocumented = registered - _contract_operations()
+    assert not undocumented, (
+        f"endpoints not declared in API_CONTRACT.yaml: {sorted(undocumented)}"
+    )
 
 
 async def test_lifespan_initialises_and_releases_dependencies(
