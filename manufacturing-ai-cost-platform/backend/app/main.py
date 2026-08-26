@@ -24,6 +24,7 @@ from app.core.logging import configure_logging, get_logger
 from app.core.middleware import MaxBodySizeMiddleware, RequestIDMiddleware
 from app.db.session import Database
 from app.integrations.model_gateway.factory import build_model_gateway
+from app.security.identity import build_identity_adapter
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database = Database(settings)
     cache = RedisCache(settings) if settings.redis_enabled else NullCache()
     gateway = build_model_gateway(settings)
+    identity_adapter = build_identity_adapter(settings)
 
     await database.connect()
     await cache.connect()
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.database = database
     app.state.cache = cache
     app.state.model_gateway = gateway
+    app.state.identity_adapter = identity_adapter
 
     logger.info(
         "application_started",
@@ -50,6 +53,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "app_env": str(settings.app_env),
             "model_gateway_provider": str(settings.model_gateway_provider),
             "auth_mode": str(settings.auth_mode),
+            "identity_adapter": type(identity_adapter).__name__,
         },
     )
     try:
@@ -104,4 +108,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+# No module-level `app = create_app()`.
+#
+# Building the application at import time would read configuration as an import
+# side effect, so merely importing this module — from a test, a migration or a
+# management command — would fail whenever configuration was incomplete. Serve
+# it with uvicorn's factory flag instead:
+#
+#     uvicorn app.main:create_app --factory

@@ -18,7 +18,8 @@ from app.core.config import (
 
 # Not a credential. A non-secret sentinel used to prove that secret handling
 # redacts whatever it is given.
-FAKE_SECRET_VALUE = "unit-test-sentinel-value"
+# 32+ bytes so it satisfies the HMAC key-strength guard.
+FAKE_SECRET_VALUE = "unit-test-sentinel-value-padded-to-length"
 
 
 def _base(**overrides: object) -> Settings:
@@ -28,6 +29,7 @@ def _base(**overrides: object) -> Settings:
         "redis_enabled": False,
         "model_gateway_provider": ModelGatewayProvider.MOCK,
         "auth_mode": AuthMode.DEVELOPMENT,
+        "jwt_secret": FAKE_SECRET_VALUE,
     }
     defaults.update(overrides)
     return Settings(**defaults)  # type: ignore[arg-type]
@@ -39,12 +41,8 @@ def test_api_prefix_matches_contract() -> None:
 
 
 def test_csv_settings_are_split() -> None:
-    settings = _base(
-        cors_allow_origins="http://a.test, http://b.test",
-        dev_principal_roles="ADMIN,ANALYST",
-    )
+    settings = _base(cors_allow_origins="http://a.test, http://b.test")
     assert settings.cors_allow_origins == ["http://a.test", "http://b.test"]
-    assert settings.dev_principal_roles == ["ADMIN", "ANALYST"]
 
 
 def test_log_level_is_normalised_and_validated() -> None:
@@ -116,6 +114,20 @@ def test_genailab_provider_requires_an_api_key() -> None:
         _base(model_gateway_provider=ModelGatewayProvider.GENAILAB, genai_api_key="")
 
 
-def test_get_settings_is_cached() -> None:
+def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    # get_settings() reads the real environment, which has no JWT_SECRET, and
+    # the development adapter rightly refuses to run without one.
+    monkeypatch.setenv("JWT_SECRET", FAKE_SECRET_VALUE)
     get_settings.cache_clear()
     assert get_settings() is get_settings()
+    get_settings.cache_clear()
+
+
+def test_short_hmac_secret_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="at least 32 bytes"):
+        _base(jwt_secret="too-short")
+
+
+def test_alg_none_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="never permitted"):
+        _base(jwt_algorithm="none")

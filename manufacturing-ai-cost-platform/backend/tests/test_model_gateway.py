@@ -22,7 +22,7 @@ from app.integrations.model_gateway.mock import MockModelGateway
 
 # Not a credential. Only proves the adapter is constructed and that the value
 # never reaches a log line or a repr.
-FAKE_CREDENTIAL = "unit-test-sentinel-value"
+FAKE_CREDENTIAL = "unit-test-sentinel-value-padded-to-length"
 
 
 def _settings(**overrides: object) -> Settings:
@@ -31,6 +31,7 @@ def _settings(**overrides: object) -> Settings:
         "database_url": "sqlite+aiosqlite:///:memory:",
         "redis_enabled": False,
         "auth_mode": AuthMode.DEVELOPMENT,
+        "jwt_secret": FAKE_CREDENTIAL,
         "model_gateway_provider": ModelGatewayProvider.MOCK,
     }
     defaults.update(overrides)

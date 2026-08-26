@@ -17,6 +17,12 @@ from app.cache.redis_client import NullCache
 from app.core.config import AppEnv, AuthMode, ModelGatewayProvider, Settings
 from app.main import create_app
 
+# Test-only signing material. Not a credential: it signs nothing outside this
+# suite, and the development adapter it drives is refused in production.
+TEST_JWT_SECRET = "test-suite-signing-material-not-a-credential"
+TEST_ISSUER = "test-issuer"
+TEST_AUDIENCE = "test-audience"
+
 
 class FailingCache(NullCache):
     """Cache stub whose health probe fails, for readiness tests."""
@@ -42,7 +48,9 @@ def settings() -> Settings:
         redis_enabled=False,
         model_gateway_provider=ModelGatewayProvider.MOCK,
         auth_mode=AuthMode.DEVELOPMENT,
-        dev_principal_roles=["ADMIN"],
+        jwt_secret=TEST_JWT_SECRET,
+        jwt_issuer=TEST_ISSUER,
+        jwt_audience=TEST_AUDIENCE,
         cors_allow_origins=["http://localhost:5173"],
         genai_api_key="",
     )

@@ -77,18 +77,34 @@ class Settings(BaseSettings):
     ssl_verify: bool = False
     allow_insecure_tls: bool = False
 
-    # --- Authentication ----------------------------------------------------
+    # --- Authentication (SECURITY.md section 3) ----------------------------
     auth_mode: AuthMode = AuthMode.DEVELOPMENT
-    dev_principal_subject: str = "dev-user"
-    dev_principal_tenant_id: str = "dev-tenant"
-    dev_principal_roles: CsvList
+
+    # JWT validation. These apply to both adapters; only the key source differs.
+    jwt_algorithm: str = "HS256"
+    jwt_secret: SecretStr = SecretStr("")
+    jwt_issuer: str | None = None
+    jwt_audience: str | None = None
+    jwt_leeway_seconds: float = 0.0
+    jwt_access_token_ttl_seconds: int = 900
+
+    # Claim mapping. Tenant and roles are not standardised by OIDC, so the
+    # claim names a provider uses are configuration, not an assumption.
+    jwt_tenant_claim: str = "tenant_id"
+    jwt_roles_claim: str = "roles"
+
+    # OIDC seam. Present so a deployment has somewhere to put these values;
+    # the adapter itself is not implemented.
+    oidc_issuer: str | None = None
+    oidc_jwks_url: str | None = None
+    oidc_audience: str | None = None
 
     # --- API security ------------------------------------------------------
     cors_allow_origins: CsvList
     max_request_bytes: int = 10 * 1024 * 1024
 
     # ----------------------------------------------------------------- utils
-    @field_validator("dev_principal_roles", "cors_allow_origins", mode="before")
+    @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
         """Accept comma-separated strings for list-valued settings."""
@@ -129,6 +145,28 @@ class Settings(BaseSettings):
                 )
             if self.debug:
                 raise ValueError("DEBUG=true is not permitted when APP_ENV=production.")
+
+        if self.auth_mode is AuthMode.DEVELOPMENT:
+            secret = self.jwt_secret.get_secret_value()
+            if not secret:
+                raise ValueError(
+                    "JWT_SECRET must be set when AUTH_MODE=development. Tokens "
+                    "are genuinely signature-verified; there is no unsigned "
+                    "fallback."
+                )
+            # RFC 7518 section 3.2: an HMAC key must be at least as long as the
+            # hash output. A shorter symmetric secret is brute-forceable, and
+            # anyone who recovers it can mint tokens for any tenant.
+            if self.jwt_algorithm.upper().startswith("HS") and len(secret.encode()) < 32:
+                raise ValueError(
+                    "JWT_SECRET must be at least 32 bytes for HMAC algorithms "
+                    "(RFC 7518 section 3.2). Generate one with: "
+                    'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+                )
+
+        if self.jwt_algorithm.upper() == "NONE":
+            # Refused outright. `alg: none` disables signature verification.
+            raise ValueError("JWT_ALGORITHM=none is never permitted.")
 
         if (
             self.model_gateway_provider is ModelGatewayProvider.GENAILAB

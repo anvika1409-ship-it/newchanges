@@ -1,15 +1,11 @@
-"""Initial security hooks.
+"""FastAPI security dependencies.
 
-SECURITY.md section 3 permits a development authentication adapter for the MVP,
-provided the structure allows an enterprise OIDC implementation later.
+Wires the identity adapter and authorization rules into request handling.
 
-Two deliberate choices here:
-
-* The development adapter is explicit about being a development adapter and is
-  refused when ``APP_ENV=production`` (enforced in ``Settings``).
-* The OIDC path is **not** implemented. It raises rather than performing a
-  token check that looks real but validates nothing. A convincing fake is worse
-  than an obvious gap.
+Endpoint-level and resource-level checks are separate on purpose
+(SECURITY.md section 4). ``RequireRoles`` guards the operation; the handler then
+calls ``authorize_resource`` once it knows which record is being touched. A
+route that only declares ``RequireRoles`` has completed half the check.
 """
 
 from __future__ import annotations
@@ -20,17 +16,19 @@ from typing import Annotated
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.config import AuthMode, Settings
+from app.core.config import Settings
 from app.core.context import set_tenant_id, set_user_id
-from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.logging import get_logger
-from app.security.principal import Principal, Role, RoleAssignment, ScopeType
+from app.security.authorization import require_roles as _require_roles
+from app.security.identity import IdentityAdapter
+from app.security.principal import Principal, Role
+from app.security.tokens import MissingTokenError
 
 logger = get_logger(__name__)
 
-# auto_error=False so a missing header produces our contract-shaped 401 rather
-# than FastAPI's default body.
-bearer_scheme = HTTPBearer(auto_error=False)
+# auto_error=False so a missing or malformed header reaches our handlers and
+# returns the contract's Error shape rather than FastAPI's default body.
+bearer_scheme = HTTPBearer(auto_error=False, scheme_name="bearerAuth")
 
 
 def get_settings_dependency(request: Request) -> Settings:
@@ -38,81 +36,61 @@ def get_settings_dependency(request: Request) -> Settings:
     return settings
 
 
+def get_identity_adapter(request: Request) -> IdentityAdapter:
+    adapter: IdentityAdapter = request.app.state.identity_adapter
+    return adapter
+
+
 async def get_current_principal(
     request: Request,
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
-    ] = None,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)] = None,
 ) -> Principal:
-    """Resolve the authenticated principal for a protected endpoint."""
-    settings: Settings = request.app.state.settings
+    """Authenticate the caller.
 
-    match settings.auth_mode:
-        case AuthMode.DEVELOPMENT:
-            principal = _development_principal(settings)
-        case AuthMode.OIDC:
-            # Deliberately unimplemented. See module docstring.
-            raise NotImplementedError(
-                "AUTH_MODE=oidc requires an enterprise OIDC adapter, which is not "
-                "implemented in this scaffold. Implement JWT validation against "
-                "the configured issuer before enabling it."
-            )
-        case _:  # pragma: no cover - StrEnum makes this unreachable
-            raise UnauthorizedError()
+    Every protected endpoint depends on this, directly or through a role guard.
+    """
+    if credentials is None or not credentials.credentials:
+        logger.info("authentication_missing_credentials")
+        raise MissingTokenError()
 
-    if credentials is not None and not credentials.credentials:
-        raise UnauthorizedError()
+    if credentials.scheme.lower() != "bearer":
+        logger.info("authentication_wrong_scheme")
+        raise MissingTokenError()
 
-    # Correlation only. Authorization decisions use the Principal, never these.
+    adapter = get_identity_adapter(request)
+    principal = await adapter.authenticate(credentials.credentials)
+
+    # Correlation for logs and telemetry only. Authorization decisions read the
+    # Principal itself, never these context values.
     set_tenant_id(principal.tenant_id)
     set_user_id(principal.subject)
+    request.state.principal = principal
+
     return principal
-
-
-def _development_principal(settings: Settings) -> Principal:
-    """Build the local development principal from configuration."""
-    assignments: list[RoleAssignment] = []
-    for raw_role in settings.dev_principal_roles or ["VIEWER"]:
-        try:
-            role = Role(raw_role.strip().upper())
-        except ValueError:
-            logger.warning("dev_principal_unknown_role", extra={"role": raw_role})
-            continue
-        assignments.append(
-            RoleAssignment(
-                role=role,
-                scope_type=ScopeType.TENANT,
-                scope_id=settings.dev_principal_tenant_id,
-            )
-        )
-
-    return Principal(
-        subject=settings.dev_principal_subject,
-        tenant_id=settings.dev_principal_tenant_id,
-        assignments=tuple(assignments),
-    )
 
 
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
 
 
-def require_roles(
-    *roles: Role,
-) -> Callable[[Principal], Awaitable[Principal]]:
+def RequireRoles(*roles: Role) -> Callable[[Principal], Awaitable[Principal]]:  # noqa: N802
     """Endpoint-level authorization guard.
 
-    Resource/object-level checks are a separate concern and are evaluated in the
-    service layer against the principal's scoped assignments
-    (SECURITY.md section 4). This guard is the endpoint half only.
+    Usage::
+
+        @router.get("/budgets", dependencies=[Depends(RequireRoles(Role.ADMIN))])
+
+    or, when the handler needs the principal::
+
+        principal: Annotated[Principal, Depends(RequireRoles(Role.ADMIN))]
+
+    This does not authorize a specific record. Call ``authorize_resource`` in
+    the handler once the resource's tenant, plant and department are known.
     """
+    if not roles:
+        raise ValueError("RequireRoles needs at least one role")
 
     async def _guard(principal: CurrentPrincipal) -> Principal:
-        if not principal.has_role(*roles):
-            logger.warning(
-                "authorization_denied",
-                extra={"required_roles": [str(r) for r in roles]},
-            )
-            raise ForbiddenError()
+        _require_roles(principal, *roles)
         return principal
 
     return _guard

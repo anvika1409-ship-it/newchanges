@@ -93,7 +93,7 @@ cd backend && python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 ```
 
 ```bash
-cd backend && ./.venv/bin/uvicorn app.main:app --reload
+cd backend && ./.venv/bin/uvicorn app.main:create_app --factory --reload
 ```
 
 Frontend:
