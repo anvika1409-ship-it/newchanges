@@ -84,7 +84,20 @@ def test_implemented_endpoints_are_the_expected_subset(settings: Settings) -> No
         for route in app.routes
         if getattr(route, "path", "").startswith(prefix)
     }
-    assert paths == {"/health", "/ready", "/models", "/models/{id}"}
+    assert paths == {
+        "/health",
+        "/ready",
+        "/models",
+        "/models/{id}",
+        "/cost/summary",
+        "/cost/by-model",
+        "/cost/by-agent",
+        "/cost/by-plant",
+        "/cost/trend",
+        "/budgets",
+        "/budgets/{id}",
+        "/budgets/status",
+    }
 
 
 async def test_lifespan_initialises_and_releases_dependencies(

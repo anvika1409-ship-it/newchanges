@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Manufacturing AI Cost Intelligence API
-  version: 1.1.0
+  version: 1.2.0
   description: >
     API contract for the Manufacturing AI Cost Intelligence & Autonomous
     Optimization Platform.
@@ -1425,8 +1425,25 @@ components:
         currency:
           type: string
         threshold_state:
+          description: >
+            Budget state derived from consumption against the budget's
+            thresholds. Inclusive lower bounds: consumption exactly at the
+            warning threshold is WARNING. EXCEEDED is fixed at 100% and is not
+            configurable.
+
+            Null when the budget could not be compared against recorded spend
+            at all - for example a currency the configured conversion policy
+            cannot reach (DATABASE_SCHEMA.md section 15). Null is not a passing
+            state; unevaluable_reason carries the cause, and budget evaluation
+            treats the same condition as REQUIRE_APPROVAL rather than ALLOW.
           type: string
-          enum: [OK, WARNING, CRITICAL]
+          nullable: true
+          enum: [NORMAL, WARNING, CRITICAL, EXCEEDED]
+        unevaluable_reason:
+          type: string
+          nullable: true
+          description: >
+            Machine-readable cause when threshold_state is null.
 
     BudgetStatusList:
       type: object

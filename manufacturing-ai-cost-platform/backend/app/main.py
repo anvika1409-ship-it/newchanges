@@ -102,7 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Manufacturing AI Cost Intelligence API",
-        version="1.1.0",
+        version="1.2.0",
         description=(
             "Cost-aware AI runtime, governance and optimization layer for "
             "manufacturing AI workloads."

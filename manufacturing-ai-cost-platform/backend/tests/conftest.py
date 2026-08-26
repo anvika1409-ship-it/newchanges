@@ -8,10 +8,17 @@ implementation and the cache is a stub.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.cache.redis_client import NullCache
 from app.core.config import AppEnv, AuthMode, ModelGatewayProvider, Settings
@@ -88,3 +95,82 @@ def _clear_settings_cache() -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Migrated database fixtures
+#
+# Cost and budget tests need real SQL — aggregation, grouping and date bucketing
+# are the behaviour under test, so a stubbed repository would test nothing. The
+# schema is built by running the Alembic migrations rather than
+# `metadata.create_all`, so the tests exercise the same DDL production gets,
+# CHECK constraints included.
+# ---------------------------------------------------------------------------
+
+BACKEND_DIR = Path(__file__).parent.parent
+
+
+@pytest.fixture(scope="session")
+def migrated_db_url(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """A file-backed SQLite database with every migration applied.
+
+    Session-scoped: migrating once and giving each test its own transaction is
+    much faster than re-migrating per test, and the rollback in ``db_session``
+    keeps them isolated.
+    """
+    import os
+
+    from alembic.config import Config
+
+    from alembic import command
+    from app.core.config import get_settings
+
+    db_path = tmp_path_factory.mktemp("costing") / "costing.db"
+    url = f"sqlite+aiosqlite:///{db_path}"
+
+    # alembic/env.py builds a full Settings object, so every variable that
+    # Settings validates must be present while the migration runs — not just the
+    # database URL. These are set here rather than at import time so they cannot
+    # leak into tests that assert on configuration.
+    overrides = {
+        "DATABASE_URL": url,
+        "JWT_SECRET": TEST_JWT_SECRET,
+        "GENAI_API_KEY": "test-placeholder",
+    }
+    previous = {name: os.environ.get(name) for name in overrides}
+    os.environ.update(overrides)
+    get_settings.cache_clear()
+    try:
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+        config.set_main_option("path_separator", "os")
+        command.upgrade(config, "head")
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        get_settings.cache_clear()
+
+    return url
+
+
+@pytest_asyncio.fixture
+async def db_session(migrated_db_url: str) -> AsyncIterator[AsyncSession]:
+    """A session that is rolled back afterwards, so tests cannot leak into each
+    other through the shared database file."""
+    engine = create_async_engine(migrated_db_url, connect_args={"timeout": 5})
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _pragmas(dbapi_connection: object, _record: object) -> None:
+        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+        await session.rollback()
+
+    await engine.dispose()

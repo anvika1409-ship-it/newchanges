@@ -9,16 +9,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import models, system
+from app.api.v1.routes import budgets, costs, models, system
 
 api_router = APIRouter()
 api_router.include_router(system.router)
 api_router.include_router(models.router)
+api_router.include_router(costs.router)
+api_router.include_router(budgets.router)
 
 # Not yet implemented — each requires its own contract-conforming router:
 #   /ai/execute          AI Execution
-#   /cost/*              Costs
-#   /budgets*            Budgets
 #   /forecasts           Forecasts
 #   /anomalies           Anomalies
 #   /optimization/*      Optimization

@@ -122,6 +122,17 @@ class Settings(BaseSettings):
     #: existing row, so operator-supplied pricing survives a redeploy.
     model_registry_seed_on_startup: bool = True
 
+    # --- Cost and budgets --------------------------------------------------
+    #: The single currency every aggregate is reported in
+    #: (DATABASE_SCHEMA.md section 15). Cost events recorded in another currency
+    #: are converted through CURRENCY_RATES before aggregation, or reported as
+    #: unconvertible — never summed in blind.
+    platform_base_currency: str = "USD"
+    #: Conversion rates *into* the base currency, as CODE:RATE pairs, e.g.
+    #: "INR:0.012,EUR:1.08". Conversion is configuration, not business logic;
+    #: an unlisted currency is refused rather than guessed.
+    currency_rates: dict[str, float] = Field(default_factory=dict)
+
     # --- API security ------------------------------------------------------
     cors_allow_origins: CsvList
     max_request_bytes: int = 10 * 1024 * 1024
@@ -134,6 +145,43 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
+
+    @field_validator("currency_rates", mode="before")
+    @classmethod
+    def _parse_currency_rates(cls, value: object) -> object:
+        """Accept ``CODE:RATE,CODE:RATE`` from the environment.
+
+        A malformed entry raises rather than being skipped: a silently dropped
+        rate would turn into an unconvertible budget at runtime, far from the
+        typo that caused it.
+        """
+        if not isinstance(value, str):
+            return value
+        rates: dict[str, float] = {}
+        for pair in value.split(","):
+            entry = pair.strip()
+            if not entry:
+                continue
+            code, separator, rate = entry.partition(":")
+            if not separator:
+                raise ValueError(
+                    f"CURRENCY_RATES entry {entry!r} must be CODE:RATE, e.g. INR:0.012"
+                )
+            try:
+                rates[code.strip().upper()] = float(rate)
+            except ValueError as exc:
+                raise ValueError(
+                    f"CURRENCY_RATES rate for {code.strip()!r} is not a number: {rate!r}"
+                ) from exc
+        return rates
+
+    @field_validator("platform_base_currency")
+    @classmethod
+    def _normalise_base_currency(cls, value: str) -> str:
+        currency = value.strip().upper()
+        if not currency:
+            raise ValueError("PLATFORM_BASE_CURRENCY must be set")
+        return currency
 
     @field_validator("log_level")
     @classmethod
