@@ -56,6 +56,39 @@ class ResourceScope:
     plant_id: str | None = None
     department_id: str | None = None
 
+    @classmethod
+    def from_record(cls, record: object) -> ResourceScope:
+        """Read ownership off a persisted record.
+
+        Reads only the three ownership columns DATABASE_SCHEMA.md already
+        defines — ``tenant_id`` (sections 12, 14, 16-20), ``plant_id`` and
+        ``department_id`` (sections 8, 9, 14). A table that carries only some of
+        them, such as ``budgets``, yields ``None`` for the rest, which is
+        correct: a tenant-wide budget genuinely has no plant.
+
+        A record with no ``tenant_id`` cannot be authorized at all, so this
+        raises rather than defaulting. Guessing an owner is how a row ends up
+        readable by the wrong tenant.
+        """
+        tenant_id = getattr(record, "tenant_id", None)
+        if not isinstance(tenant_id, str) or not tenant_id:
+            raise ValueError(
+                f"{type(record).__name__} has no tenant_id, so it cannot be "
+                "authorized. Derive the owning tenant from its parent entity "
+                "and build a ResourceScope explicitly."
+            )
+        plant_id = getattr(record, "plant_id", None)
+        department_id = getattr(record, "department_id", None)
+        return cls(
+            tenant_id=tenant_id,
+            plant_id=plant_id if isinstance(plant_id, str) and plant_id else None,
+            department_id=(
+                department_id
+                if isinstance(department_id, str) and department_id
+                else None
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Principal:

@@ -24,10 +24,9 @@ visible to the caller".
 from __future__ import annotations
 
 from app.core.errors import ForbiddenError, NotFoundError
-from app.core.logging import get_logger
+from app.security.events import SecurityEvent, record_security_event
+from app.security.permissions import Permission, assignments_granting, require_permission
 from app.security.principal import Principal, ResourceScope, Role, RoleAssignment, ScopeType
-
-logger = get_logger(__name__)
 
 
 class CrossTenantAccessError(NotFoundError):
@@ -50,12 +49,12 @@ def require_roles(principal: Principal, *roles: Role) -> None:
         raise ValueError("At least one role must be required")
 
     if not principal.has_role(*roles):
-        logger.warning(
-            "authorization_denied_endpoint",
-            extra={
-                "required_roles": sorted(str(r) for r in roles),
-                "held_roles": sorted(str(r) for r in principal.roles),
-            },
+        record_security_event(
+            SecurityEvent.AUTHORIZATION_DENIED,
+            reason="role_not_held",
+            required_roles=sorted(str(r) for r in roles),
+            held_roles=sorted(str(r) for r in principal.roles),
+            check_level="endpoint",
         )
         raise ForbiddenError()
 
@@ -68,7 +67,11 @@ def require_tenant(principal: Principal, tenant_id: str) -> None:
     ``reject_client_tenant_override``.
     """
     if tenant_id != principal.tenant_id:
-        logger.warning("authorization_denied_cross_tenant")
+        record_security_event(
+            SecurityEvent.TENANT_ISOLATION_VIOLATION,
+            reason="resource_belongs_to_another_tenant",
+            check_level="resource",
+        )
         raise CrossTenantAccessError()
 
 
@@ -83,7 +86,11 @@ def reject_client_tenant_override(principal: Principal, claimed_tenant_id: str |
         The authenticated tenant id, which is the only one queries may use.
     """
     if claimed_tenant_id is not None and claimed_tenant_id != principal.tenant_id:
-        logger.warning("authorization_denied_tenant_override")
+        record_security_event(
+            SecurityEvent.TENANT_ISOLATION_VIOLATION,
+            reason="client_supplied_tenant_override",
+            check_level="tenant_resolution",
+        )
         raise CrossTenantAccessError()
     return principal.tenant_id
 
@@ -125,24 +132,82 @@ def authorize_resource(
 
     candidates = principal.assignments_for(*roles)
     if not candidates:
-        logger.warning(
-            "authorization_denied_resource_role",
-            extra={"required_roles": sorted(str(r) for r in roles)},
+        record_security_event(
+            SecurityEvent.AUTHORIZATION_DENIED,
+            reason="role_not_held",
+            required_roles=sorted(str(r) for r in roles),
+            check_level="resource",
         )
         raise ForbiddenError()
 
     if not any(_assignment_covers(a, resource) for a in candidates):
         # The caller holds the role, but not over this plant or department.
         # This is the SECURITY.md section 4 example.
-        logger.warning(
-            "authorization_denied_resource_scope",
-            extra={
-                "required_roles": sorted(str(r) for r in roles),
-                "resource_plant_id": resource.plant_id,
-                "resource_department_id": resource.department_id,
-            },
+        record_security_event(
+            SecurityEvent.AUTHORIZATION_DENIED,
+            reason="resource_out_of_scope",
+            required_roles=sorted(str(r) for r in roles),
+            resource_plant_id=resource.plant_id,
+            resource_department_id=resource.department_id,
+            check_level="resource",
         )
         raise ForbiddenError()
+
+
+def authorize_resource_permission(
+    principal: Principal,
+    resource: ResourceScope,
+    permission: Permission,
+) -> None:
+    """Resource-level check driven by a permission rather than a role list.
+
+    Preferred over ``authorize_resource`` for new code: the roles that may
+    perform an operation are stated once, in
+    ``app.security.permissions.ROLE_PERMISSIONS``, instead of being restated at
+    every call site where they can drift apart.
+
+    Same evaluation order as ``authorize_resource``: tenant first, so a
+    cross-tenant probe is a 404 that reveals nothing about the caller's
+    permissions.
+
+    Only assignments whose role grants ``permission`` contribute scope. Holding
+    a read-only role over plant-2 must not authorize a write there.
+
+    Raises:
+        CrossTenantAccessError: resource belongs to another tenant (404).
+        ForbiddenError: right tenant, but the permission is not granted or is
+            not held over this plant or department (403).
+    """
+    require_tenant(principal, resource.tenant_id)
+    require_permission(principal, permission)
+
+    candidates = assignments_granting(principal, permission)
+    if not any(_assignment_covers(a, resource) for a in candidates):
+        record_security_event(
+            SecurityEvent.AUTHORIZATION_DENIED,
+            reason="resource_out_of_scope",
+            required_permission=str(permission),
+            resource_plant_id=resource.plant_id,
+            resource_department_id=resource.department_id,
+            check_level="resource",
+        )
+        raise ForbiddenError()
+
+
+def can_access_resource_permission(
+    principal: Principal, resource: ResourceScope, permission: Permission
+) -> bool:
+    """Non-raising form of ``authorize_resource_permission``.
+
+    For filtering an already-loaded collection. Prefer constraining the query
+    with ``app.security.scope.resolve_authorized_scope`` — reading rows only to
+    discard them wastes work and leaks counts through pagination totals.
+    """
+    try:
+        authorize_resource_permission(principal, resource, permission)
+    except (ForbiddenError, CrossTenantAccessError):
+        return False
+    return True
 
 
 def can_access_resource(principal: Principal, resource: ResourceScope, *roles: Role) -> bool:

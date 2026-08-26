@@ -53,6 +53,7 @@ def settings() -> Settings:
         jwt_audience=TEST_AUDIENCE,
         cors_allow_origins=["http://localhost:5173"],
         genai_api_key="",
+        model_registry_seed_on_startup=False,
     )
 
 

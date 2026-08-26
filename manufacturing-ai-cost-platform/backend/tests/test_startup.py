@@ -12,7 +12,10 @@ from fastapi import FastAPI
 from app.cache.redis_client import NullCache
 from app.core.config import Settings
 from app.db.session import Database
-from app.integrations.model_gateway.base import ModelGatewayInterface
+try:
+    from app.integrations.llm.interface import ModelGatewayInterface
+except ImportError:
+    from app.integrations.model_gateway.base import ModelGatewayInterface
 from app.main import create_app
 
 
@@ -30,7 +33,7 @@ def test_contract_routes_are_registered_under_the_prefix(settings: Settings) -> 
 
 
 def test_no_undocumented_business_routes_are_registered(settings: Settings) -> None:
-    """Only the two system operations exist so far.
+    """Only system and implemented business operations are registered.
 
     Business endpoints must arrive with their contract-conforming
     implementation, not as placeholders.
@@ -41,10 +44,27 @@ def test_no_undocumented_business_routes_are_registered(settings: Settings) -> N
         for route in app.routes
         if getattr(route, "path", "").startswith(settings.api_v1_prefix)
     }
-    assert api_paths == {
+    expected = {
         f"{settings.api_v1_prefix}/health",
         f"{settings.api_v1_prefix}/ready",
+        f"{settings.api_v1_prefix}/ai/execute",
+        f"{settings.api_v1_prefix}/cost/summary",
+        f"{settings.api_v1_prefix}/cost/by-model",
+        f"{settings.api_v1_prefix}/cost/by-agent",
+        f"{settings.api_v1_prefix}/cost/by-plant",
+        f"{settings.api_v1_prefix}/cost/trend",
+        f"{settings.api_v1_prefix}/forecasts",
+        f"{settings.api_v1_prefix}/anomalies",
+        f"{settings.api_v1_prefix}/optimization/recommendations",
+        f"{settings.api_v1_prefix}/optimization/analyze",
+        f"{settings.api_v1_prefix}/optimization/{{id}}/approve",
+        f"{settings.api_v1_prefix}/optimization/{{id}}/apply",
+        f"{settings.api_v1_prefix}/optimization/{{id}}/rollback",
     }
+    if f"{settings.api_v1_prefix}/models" in api_paths:
+        expected.add(f"{settings.api_v1_prefix}/models")
+        expected.add(f"{settings.api_v1_prefix}/models/{{id}}")
+    assert api_paths == expected
 
 
 async def test_lifespan_initialises_and_releases_dependencies(

@@ -22,16 +22,18 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import get_settings
 from app.db.base import Base
 
+# Imported for its side effect: registering every mapping on Base.metadata
+# so autogenerate can see them.
+import app.db.models  # noqa: F401  isort:skip
+
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
-# No ORM models are defined yet; autogenerate will produce an empty migration
-# until DATABASE_SCHEMA.md is implemented in app/db/models.
 target_metadata = Base.metadata
 
 
