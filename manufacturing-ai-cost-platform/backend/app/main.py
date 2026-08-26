@@ -23,7 +23,7 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import MaxBodySizeMiddleware, RequestIDMiddleware
 from app.db.session import Database
-from app.integrations.model_gateway.factory import build_model_gateway
+from app.integrations.llm.client import build_model_gateway
 from app.security.identity import build_identity_adapter
 
 logger = get_logger(__name__)

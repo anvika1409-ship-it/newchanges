@@ -50,6 +50,8 @@ async def test_ready_does_not_call_the_model_gateway(
     client: AsyncClient, api_prefix: str, app
 ) -> None:
     """Readiness must not make a billable model call."""
-    gateway = app.state.model_gateway
+    # The gateway is wrapped in ResilientGateway; the mock that counts calls is
+    # the wrapped implementation.
+    inner = app.state.model_gateway.inner
     await client.get(f"{api_prefix}/ready")
-    assert gateway.call_count == 0
+    assert inner.call_count == 0

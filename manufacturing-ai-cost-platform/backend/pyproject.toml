@@ -52,7 +52,10 @@ include = ["app*"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-q --strict-markers"
+addopts = "-q --strict-markers -m 'not smoke'"
+markers = [
+    "smoke: makes a real, billable call to a live provider. Excluded by default; run explicitly with -m smoke.",
+]
 filterwarnings = ["error::DeprecationWarning:app.*"]
 
 # ---------------------------------------------------------------------------

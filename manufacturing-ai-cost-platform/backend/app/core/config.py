@@ -73,9 +73,24 @@ class Settings(BaseSettings):
     genai_base_url: str = "https://genailab.tcs.in/v1"
     genai_api_key: SecretStr = SecretStr("")
     genai_timeout_seconds: float = 60.0
-    genai_max_retries: int = 2
     ssl_verify: bool = False
     allow_insecure_tls: bool = False
+
+    # Resilience (SECURITY.md section 19). Retrying is owned by the gateway
+    # wrapper, not the provider SDK, so these are the only retry knobs.
+    genai_max_attempts: int = 3
+    genai_retry_base_delay_seconds: float = 0.5
+    genai_retry_max_delay_seconds: float = 8.0
+    genai_retry_max_elapsed_seconds: float = 60.0
+
+    genai_circuit_breaker_enabled: bool = True
+    genai_circuit_breaker_failure_threshold: int = 5
+    genai_circuit_breaker_reset_seconds: float = 30.0
+
+    # Live smoke test. Off unless explicitly enabled; guards against a test run
+    # accidentally spending money (AI_DEVELOPMENT_RULES.md section 25).
+    genai_smoke_test_enabled: bool = False
+    genai_smoke_test_model: str = ""
 
     # --- Authentication (SECURITY.md section 3) ----------------------------
     auth_mode: AuthMode = AuthMode.DEVELOPMENT
