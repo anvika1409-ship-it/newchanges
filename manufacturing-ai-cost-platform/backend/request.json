@@ -1,0 +1,1 @@
+﻿{"workload_type":"quality_check","business_priority":"NORMAL","plant_id":"plant-pune","department_id":"dept-plant-pune-quality","workload_id":"wl-plant-pune-quality_check","request_payload":{"line":"assembly-4","part":"housing-A"},"input_refs":[{"ref":"obj://demo/inspection-1","content_type":"image/png"}],"modality":"image"}
