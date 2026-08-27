@@ -10,7 +10,7 @@
  * (AI_DEVELOPMENT_RULES.md section 19).
  */
 
-import { apiClient, ApiRequestError } from './apiClient';
+import { apiClient, ApiRequestError, authHeader } from './apiClient';
 import type { InputRef, AIExecutionResponse } from '../types/quality';
 
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
@@ -26,17 +26,12 @@ export async function uploadImage(file: File, signal?: AbortSignal): Promise<Inp
   const form = new FormData();
   form.append('file', file);
 
+  // Content-Type is deliberately not set: the browser must supply it so the
+  // multipart boundary matches the body it generates.
   const headers: Record<string, string> = {
     'X-Request-ID': crypto.randomUUID(),
+    ...authHeader(),
   };
-
-  // Reuse the auth token from the apiClient module.
-  // The token is set via setAuthToken() at login time.
-  const tokenModule = await import('./apiClient');
-  // Access the module-level token through a re-export or by reading the header
-  // that apiClient would set. Since we can't access the private `authToken`,
-  // we read it from localStorage or the module. For this MVP, we'll pass it
-  // through the same mechanism.
 
   let response: Response;
   try {

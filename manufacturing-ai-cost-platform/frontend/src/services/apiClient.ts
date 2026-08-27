@@ -28,6 +28,23 @@ export function setAuthToken(token: string | null): void {
   authToken = token;
 }
 
+/**
+ * Authorization header for the current token, or an empty object when no token
+ * is set.
+ *
+ * Exists for the requests that cannot go through `request()` — a multipart
+ * upload must let the browser set its own `Content-Type` boundary. Those calls
+ * previously had no way to reach the module-private token and so sent no
+ * credentials at all, which the backend correctly refused with
+ * `missing_credentials`.
+ *
+ * Returns the formatted header rather than the raw token so `Bearer` prefixing
+ * stays defined in exactly one place.
+ */
+export function authHeader(): Record<string, string> {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
 /** Error carrying the backend's contract-shaped body. */
 export class ApiRequestError extends Error {
   readonly status: number;
