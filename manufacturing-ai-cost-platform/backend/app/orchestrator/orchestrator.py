@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.context import get_request_id, get_trace_id
@@ -43,11 +43,14 @@ from app.core.logging import get_logger
 from app.db.models.registry import ModelRegistryEntry
 from app.integrations.llm.errors import ModelGatewayError
 from app.integrations.llm.interface import (
+    ImagePart,
     Message,
     ModelGatewayInterface,
+    MultimodalGenerationRequest,
     Role,
     TextGenerationRequest,
     TextGenerationResponse,
+    TextPart,
     UsageProvenance,
 )
 from app.orchestrator.classification import (
@@ -60,6 +63,7 @@ from app.orchestrator.classification import (
 from app.orchestrator.plan import ExecutionPlan
 from app.policies.budget_policy import BudgetDecision, PolicyOutcome
 from app.security.principal import Principal
+from app.workloads.quality_check import build_quality_prompt, parse_quality_response
 
 logger = get_logger(__name__)
 
@@ -100,6 +104,7 @@ class OrchestrationRequest:
     quality_requirement: float | None = None
     max_cost: float | None = None
     image_count: int = 0
+    image_bytes: list[tuple[bytes, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,18 +337,44 @@ class CostAwareOrchestrator:
         if self._guardrails is not None:
             await self._guardrails.check_input(request.payload)
 
-        model_request = TextGenerationRequest(
-            model=plan.selected_model_name,
-            messages=(Message(role=Role.USER, content=self._render_payload(request.payload)),),
-            max_output_tokens=None,
-            request_id=plan.request_id,
-            trace_id=plan.trace_id,
-        )
+        # Build prompt & request (multimodal if images are present)
+        is_multimodal = bool(request.image_bytes or request.image_count > 0)
+        if plan.workload_type == "quality_check":
+            prompt_text = build_quality_prompt(request.payload)
+        else:
+            prompt_text = self._render_payload(request.payload)
+
+        if is_multimodal and request.image_bytes:
+            parts: list[TextPart | ImagePart] = [TextPart(text=prompt_text)]
+            for img_data, media_type in request.image_bytes:
+                parts.append(ImagePart(data=img_data, media_type=media_type))
+
+            message = Message(role=Role.USER, content=tuple(parts))
+            model_request: TextGenerationRequest = MultimodalGenerationRequest(
+                model=plan.selected_model_name,
+                messages=(message,),
+                max_output_tokens=None,
+                request_id=plan.request_id,
+                trace_id=plan.trace_id,
+                response_format="json_object" if plan.workload_type == "quality_check" else "text",
+            )
+        else:
+            model_request = TextGenerationRequest(
+                model=plan.selected_model_name,
+                messages=(Message(role=Role.USER, content=prompt_text),),
+                max_output_tokens=None,
+                request_id=plan.request_id,
+                trace_id=plan.trace_id,
+                response_format="json_object" if plan.workload_type == "quality_check" else "text",
+            )
 
         # --- 21. execute through ModelGateway --------------------------------
         fallback_used = False
         try:
-            response = await self._gateway.generate_text(model_request)
+            if isinstance(model_request, MultimodalGenerationRequest):
+                response = await self._gateway.generate_multimodal(model_request)
+            else:
+                response = await self._gateway.generate_text(model_request)
         except ModelGatewayError as exc:
             # A gateway failure is not swallowed. One fallback attempt is made
             # against the next-best candidate when the policy allows it
@@ -363,9 +394,11 @@ class CostAwareOrchestrator:
                 raise
 
             fallback_used = True
-            response = await self._gateway.generate_text(
-                model_request.model_copy(update={"model": fallback.model_name})
-            )
+            fallback_request = model_request.model_copy(update={"model": fallback.model_name})
+            if isinstance(fallback_request, MultimodalGenerationRequest):
+                response = await self._gateway.generate_multimodal(fallback_request)
+            else:
+                response = await self._gateway.generate_text(fallback_request)
             plan = self._with_model(plan, fallback, note="fallback")
 
         # --- 19b. output guardrails -------------------------------------------
@@ -398,11 +431,25 @@ class CostAwareOrchestrator:
             cost_amount = plan.estimated_cost
             cost_provenance = "ESTIMATED" if cost_amount is not None else "UNAVAILABLE"
 
+        result_data: dict[str, Any] = {
+            "content": response.content,
+            "finish_reason": response.finish_reason,
+        }
+        quality_score: float | None = None
+
+        if plan.workload_type == "quality_check":
+            quality_parsed = parse_quality_response(response.content)
+            result_data["verdict"] = str(quality_parsed.verdict)
+            result_data["defect_type"] = quality_parsed.defect_type
+            result_data["confidence"] = quality_parsed.confidence
+            result_data["raw_response"] = quality_parsed.raw_response
+            quality_score = quality_parsed.confidence
+
         return ExecutionResult(
             request_id=plan.request_id,
             trace_id=plan.trace_id,
             plan=plan,
-            result={"content": response.content, "finish_reason": response.finish_reason},
+            result=result_data,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             total_tokens=usage.total_tokens,
@@ -410,7 +457,7 @@ class CostAwareOrchestrator:
             cost_amount=cost_amount,
             cost_currency=plan.estimated_cost_currency,
             cost_provenance=cost_provenance,
-            quality_score=None,
+            quality_score=quality_score,
             fallback_used=fallback_used,
             attempts=response.attempts,
         )

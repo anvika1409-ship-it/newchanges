@@ -8,6 +8,7 @@
 
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Dashboard } from '../pages/Dashboard';
+import { QualityInspection } from '../pages/QualityInspection';
 import { StatusPage } from '../pages/StatusPage';
 import { NotFound } from '../pages/NotFound';
 
@@ -16,6 +17,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/quality" element={<QualityInspection />} />
       <Route path="/status" element={<StatusPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

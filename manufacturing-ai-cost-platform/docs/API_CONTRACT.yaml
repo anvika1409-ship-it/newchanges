@@ -100,6 +100,43 @@ paths:
         default:
           $ref: "#/components/responses/InternalError"
 
+  /quality/upload:
+    post:
+      tags: [Quality Control]
+      summary: Upload a product image for quality inspection
+      description: >
+        Validates and uploads an image for quality control, returning an InputRef
+        object to be passed into /ai/execute.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Image uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InputRef"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          description: Payload too large
+        default:
+          $ref: "#/components/responses/InternalError"
+
   /cost/summary:
     get:
       tags: [Costs]

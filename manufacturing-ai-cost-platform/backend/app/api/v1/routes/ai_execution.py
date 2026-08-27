@@ -15,6 +15,7 @@ Tenant is taken from the authenticated principal. ``plant_id`` and
 
 from __future__ import annotations
 
+from pathlib import Path
 from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal
 
@@ -32,6 +33,7 @@ from app.repositories.model_repository import ModelRepository
 from app.repositories.routing_policy_repository import RoutingPolicyRepository
 from app.security.dependencies import CurrentPrincipal
 from app.services.model_registry import ModelRegistryService
+from app.telemetry.recorder import TelemetryRecorder
 
 logger = get_logger(__name__)
 
@@ -121,11 +123,13 @@ async def get_orchestrator(request: Request) -> AsyncIterator[CostAwareOrchestra
     database = request.app.state.database
     async with database.session() as session:
         registry = ModelRegistryService(ModelRepository(session))
+        telemetry_recorder = TelemetryRecorder(session)
         yield CostAwareOrchestrator(
             model_gateway=request.app.state.model_gateway,
             registry_service=registry,
             budget_evaluator=RepositoryBudgetEvaluator(_BudgetLimitSource(session)),
             routing_policy_repository=RoutingPolicyRepository(session),
+            telemetry_recorder=telemetry_recorder,
         )
 
 
@@ -173,6 +177,17 @@ async def execute_ai_workload(
     A budget BLOCK surfaces as 409 and a missing compatible model as 409, both
     raised by the orchestrator before any billable call.
     """
+    image_bytes: list[tuple[bytes, str]] = []
+    for ref in body.input_refs:
+        if ref.content_type.startswith("image/"):
+            ref_path = Path(ref.ref)
+            if ref_path.is_file():
+                try:
+                    data = ref_path.read_bytes()
+                    image_bytes.append((data, ref.content_type))
+                except Exception:
+                    logger.warning("failed_to_read_input_ref", extra={"ref": ref.ref})
+
     result = await orchestrator.execute(
         OrchestrationRequest(
             workload_type=body.workload_type,
@@ -187,6 +202,7 @@ async def execute_ai_workload(
             image_count=sum(
                 1 for ref in body.input_refs if ref.content_type.startswith("image/")
             ),
+            image_bytes=image_bytes,
         ),
         principal,
     )

@@ -21,12 +21,14 @@ from app.api.v1.routes import (
     forecasts,
     models,
     optimization,
+    quality,
     system,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(system.router)
+api_router.include_router(quality.router)
 api_router.include_router(ai_execution.router)
 api_router.include_router(costs.router)
 api_router.include_router(budgets.router)
