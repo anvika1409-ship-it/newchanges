@@ -31,6 +31,8 @@ from app.orchestrator import (
 )
 from app.repositories.model_repository import ModelRepository
 from app.repositories.routing_policy_repository import RoutingPolicyRepository
+from app.core.errors import RateLimitedError
+from app.core.rate_limit import RateLimitPolicy, rate_limit_key
 from app.guardrails.workload_guardrails import build_workload_guardrails
 from app.security.dependencies import RequirePermission
 from app.security.permissions import Permission
@@ -165,6 +167,40 @@ class _BudgetLimitSource:
 Orchestrator = Annotated[CostAwareOrchestrator, Depends(get_orchestrator)]
 
 
+async def enforce_execute_rate_limit(
+    request: Request,
+    principal: Annotated[Principal, Depends(RequirePermission(Permission.AI_EXECUTE))],
+) -> None:
+    """Rate limit the expensive endpoint (SECURITY.md section 18).
+
+    Keyed on the authenticated principal rather than the client address:
+    limiting by IP punishes everyone behind a shared egress, and an
+    unauthenticated caller has already been refused by the time this runs.
+
+    Declared after the permission guard so an unauthorized caller cannot consume
+    another caller's allowance.
+    """
+    settings = request.app.state.settings
+    if not settings.rate_limit_enabled:
+        return
+
+    decision = await request.app.state.rate_limiter.check(
+        rate_limit_key(
+            tenant_id=principal.tenant_id,
+            subject=principal.subject,
+            route="/ai/execute",
+        ),
+        RateLimitPolicy(
+            max_requests=settings.ai_execute_rate_limit_requests,
+            window_seconds=settings.ai_execute_rate_limit_window_seconds,
+        ),
+    )
+    if not decision.allowed:
+        raise RateLimitedError(
+            details={"retry_after_seconds": decision.retry_after_seconds}
+        )
+
+
 # ── Endpoint ───────────────────────────────────────────────────────────────
 @router.post(
     "/ai/execute",
@@ -179,6 +215,7 @@ async def execute_ai_workload(
     # to incur cost (SECURITY.md section 4).
     principal: Annotated[Principal, Depends(RequirePermission(Permission.AI_EXECUTE))],
     orchestrator: Orchestrator,
+    _rate_limited: Annotated[None, Depends(enforce_execute_rate_limit)] = None,
 ) -> AIExecutionResponseModel:
     """Route and execute one AI workload.
 

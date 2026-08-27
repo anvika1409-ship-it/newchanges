@@ -33,7 +33,9 @@ from app.optimization.simulation import Baseline, SimulationInput, simulate
 from app.optimization.simulation import ModelMixEntry as DomainMixEntry
 from app.repositories.cost_repository import CostAggregationRepository
 from app.repositories.model_repository import ModelRepository
+from app.repositories.audit_repository import AuditEventRepository
 from app.repositories.optimization_repository import OptimizationRepository
+from app.services.audit import AuditService
 from app.repositories.workload_repository import WorkloadRepository
 
 # Imported unconditionally. A try/except around this import turned a
@@ -194,7 +196,14 @@ async def approve_recommendation(
     async with database.session() as session:
         opt_repo = OptimizationRepository(session)
         policy_repo = PolicyRepository(session)
-        service = PolicyLifecycleService(opt_repo, policy_repo)
+        service = PolicyLifecycleService(
+            opt_repo,
+            policy_repo,
+            # Every policy change must be auditable
+            # (SECURITY.md section 16, AI_DEVELOPMENT_RULES.md section 12).
+            audit_service=AuditService(AuditEventRepository(session)),
+            workload_repository=WorkloadRepository(session),
+        )
 
         try:
             rec = await service.approve_recommendation(
@@ -257,7 +266,14 @@ async def apply_recommendation(
     async with database.session() as session:
         opt_repo = OptimizationRepository(session)
         policy_repo = PolicyRepository(session)
-        service = PolicyLifecycleService(opt_repo, policy_repo)
+        service = PolicyLifecycleService(
+            opt_repo,
+            policy_repo,
+            # Every policy change must be auditable
+            # (SECURITY.md section 16, AI_DEVELOPMENT_RULES.md section 12).
+            audit_service=AuditService(AuditEventRepository(session)),
+            workload_repository=WorkloadRepository(session),
+        )
 
         try:
             rec, new_policy = await service.apply_policy(
@@ -307,7 +323,14 @@ async def rollback_recommendation(
     async with database.session() as session:
         opt_repo = OptimizationRepository(session)
         policy_repo = PolicyRepository(session)
-        service = PolicyLifecycleService(opt_repo, policy_repo)
+        service = PolicyLifecycleService(
+            opt_repo,
+            policy_repo,
+            # Every policy change must be auditable
+            # (SECURITY.md section 16, AI_DEVELOPMENT_RULES.md section 12).
+            audit_service=AuditService(AuditEventRepository(session)),
+            workload_repository=WorkloadRepository(session),
+        )
 
         try:
             rec, reactivated = await service.rollback_policy(

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { SessionTokenBar } from './SessionTokenBar';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -18,24 +19,27 @@ export function Layout({ children }: { children: ReactNode }) {
           <span className="font-mono text-sm font-semibold tracking-tight text-foreground">
             Manufacturing AI Cost Intelligence
           </span>
-          <nav className="flex gap-4">
-            {NAV.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
-                    'text-sm transition-colors',
-                    isActive
-                      ? 'font-medium text-primary'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          <div className="flex items-center gap-6">
+            <nav className="flex gap-4">
+              {NAV.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn(
+                      'text-sm transition-colors',
+                      isActive
+                        ? 'font-medium text-primary'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+            <SessionTokenBar />
+          </div>
         </div>
       </header>
       <main>{children}</main>

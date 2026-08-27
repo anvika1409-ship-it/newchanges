@@ -134,6 +134,12 @@ class Settings(BaseSettings):
     #: an unlisted currency is refused rather than guessed.
     currency_rates: dict[str, float] = Field(default_factory=dict)
 
+    # --- Rate limiting (SECURITY.md section 18) ----------------------------
+    # Applied to the expensive endpoint. Per-process only; see PRODUCTION_READINESS.md.
+    rate_limit_enabled: bool = True
+    ai_execute_rate_limit_requests: int = 60
+    ai_execute_rate_limit_window_seconds: float = 60.0
+
     # --- API security ------------------------------------------------------
     cors_allow_origins: CsvList
     max_request_bytes: int = 10 * 1024 * 1024

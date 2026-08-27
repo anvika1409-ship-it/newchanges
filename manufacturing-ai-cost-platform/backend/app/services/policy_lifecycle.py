@@ -26,6 +26,7 @@ from app.db.models.optimization import (
 from app.db.models.policy import PolicyStatus, RoutingPolicyRecord
 from app.repositories.optimization_repository import OptimizationRepository
 from app.repositories.policy_repository import PolicyRepository
+from app.services.audit import AuditAction, AuditService
 from app.security.events import SecurityEvent, record_security_event
 from app.security.principal import Principal, Role
 
@@ -49,10 +50,19 @@ class PolicyLifecycleService:
         policy_repository: PolicyRepository,
         *,
         auto_approve_low_risk: bool = False,
+        audit_service: AuditService | None = None,
+        workload_repository: Any = None,
     ) -> None:
         self._opt_repo = optimization_repository
         self._policy_repo = policy_repository
         self._auto_approve_low_risk = auto_approve_low_risk
+        #: Optional so existing unit tests can drive the service without a
+        #: session. The route always supplies one — every policy change must be
+        #: auditable (AI_DEVELOPMENT_RULES.md section 12).
+        self._audit = audit_service
+        #: Resolves a workload id to its type. Optional so existing unit tests
+        #: can construct the service without one.
+        self._workload_repo = workload_repository
 
     # ── 1. Policy Validation & Risk Assessment ────────────────────
 
@@ -60,6 +70,16 @@ class PolicyLifecycleService:
         """Validate recommendation parameters prior to activation."""
         if not recommendation.recommended_strategy:
             return False, "Missing recommended strategy"
+        # `estimated_saving` is nullable. Comparing None with `<` raised a
+        # TypeError from inside apply_policy rather than returning a validation
+        # failure, so an unquantified recommendation crashed activation instead
+        # of being refused by it.
+        #
+        # Unknown is refused rather than waved through: activating a routing
+        # change whose saving nobody could quantify is the case this gate exists
+        # for.
+        if recommendation.estimated_saving is None:
+            return False, "Estimated saving is unknown; cannot validate the change"
         if recommendation.estimated_saving < 0:
             return False, "Negative savings invalid"
         return True, "Valid"
@@ -137,9 +157,49 @@ class PolicyLifecycleService:
                 },
             )
 
+        await self._audit_decision(rec, approved=approved, actor=approver_subject, reason=reason)
         return rec
 
+    async def _audit_decision(
+        self,
+        rec: OptimizationRecommendationRecord,
+        *,
+        approved: bool,
+        actor: str | None,
+        reason: str,
+    ) -> None:
+        """Record the approval decision. SECURITY.md section 16 names both."""
+        if self._audit is None:
+            return
+        await self._audit.record(
+            AuditAction.OPTIMIZATION_APPROVED
+            if approved
+            else AuditAction.OPTIMIZATION_REJECTED,
+            tenant_id=rec.tenant_id,
+            resource_type="optimization_recommendation",
+            resource_id=rec.id,
+            user_id=actor,
+            after_state={"status": str(rec.status), "risk_level": rec.risk_level},
+            reason=reason or None,
+        )
+
     # ── 3. Policy Versioning & Activation ─────────────────────────
+
+    async def _resolve_workload_type(self, workload_id: str | None) -> str:
+        """Map a workload id to its type.
+
+        Falls back to the id when no repository is available or the workload is
+        unknown — the previous behaviour — so this cannot make an existing
+        caller worse.
+        """
+        if workload_id and self._workload_repo is not None:
+            workload = await self._workload_repo.get_by_id(workload_id)
+            if workload is not None:
+                return str(workload.workload_type)
+            logger.warning(
+                "policy_workload_type_unresolved", extra={"workload_id": workload_id}
+            )
+        return workload_id or ""
 
     async def apply_policy(
         self,
@@ -167,11 +227,22 @@ class PolicyLifecycleService:
             raise PolicyConflictError(f"Policy validation failed: {err_msg}")
 
         # 1. Fetch existing active policy (if any) to supersede
-        workload_type = rec.workload_id
+        #
+        # `rec.workload_id` is an id ("wl-plant-pune-quality_check"), not a
+        # type ("quality_check"). Using it as the type created the new policy
+        # under a workload_type nothing looks up, so the activated policy
+        # superseded nothing and no future request ever saw it.
         tenant_id = rec.tenant_id
+        workload_type = await self._resolve_workload_type(rec.workload_id)
 
+        # The new policy below is created at "medium" complexity, so that is
+        # the routing key being replaced. Superseding without matching it left
+        # the real predecessor ACTIVE alongside the new version.
+        target_complexity = "medium"
         current_active = await self._policy_repo.get_active_policy(
-            workload_type=workload_type, tenant_id=tenant_id
+            workload_type=workload_type,
+            tenant_id=tenant_id,
+            complexity=target_complexity,
         )
 
         superseded_id: str | None = None
@@ -194,10 +265,22 @@ class PolicyLifecycleService:
         policy_status = PolicyStatus.CANARY if activation_mode.upper() == "CANARY" else PolicyStatus.ACTIVE
 
         # 3. Create new routing policy record
+        #
+        # selected_model_id stays None: `optimization_recommendations` records a
+        # strategy only as free text (`recommended_strategy`), and
+        # DATABASE_SCHEMA.md defines no column naming a target model. Parsing a
+        # model id out of that sentence, or adding a column the schema does not
+        # define, would both be inventions (AI_DEVELOPMENT_RULES.md section 3).
+        #
+        # Consequence, stated rather than hidden: activating a recommendation
+        # advances the policy version and supersedes the predecessor, but does
+        # not itself repin the model. Model selection falls back to capability
+        # and budget filtering. Encoding a machine-readable target requires a
+        # schema change agreed in DATABASE_SCHEMA.md first.
         new_policy = RoutingPolicyRecord(
             tenant_id=tenant_id,
             workload_type=workload_type,
-            complexity="medium",
+            complexity=target_complexity,
             business_priority="NORMAL",
             selected_model_id=None,
             version=new_version,

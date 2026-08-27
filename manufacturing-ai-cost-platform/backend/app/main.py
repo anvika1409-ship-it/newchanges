@@ -23,6 +23,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import MaxBodySizeMiddleware, RequestIDMiddleware
+from app.core.rate_limit import InMemoryRateLimiter, NullRateLimiter
 from app.db.session import Database
 from app.integrations.llm.client import build_model_gateway
 from app.security.identity import build_identity_adapter
@@ -113,6 +114,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # One limiter per process. Counters are per-process, so this is not a
+    # shared ceiling across replicas — the RateLimiter abstraction exists so a
+    # Redis-backed implementation can replace it.
+    app.state.rate_limiter = (
+        InMemoryRateLimiter() if settings.rate_limit_enabled else NullRateLimiter()
+    )
 
     # Middleware is applied bottom-up: RequestID must be outermost so every
     # other layer, including error responses, carries the correlation id.

@@ -391,3 +391,28 @@ class TestPolicyLifecycleAPI:
         rollback_data = rollback_resp.json()
         assert rollback_data["status"] == "ROLLED_BACK"
         assert rollback_data["reactivated_policy_version"] == 1
+
+
+def test_validate_policy_refuses_an_unquantified_saving() -> None:
+    """A null saving must be refused, not crash the comparison.
+
+    `estimated_saving` is nullable, and `None < 0` raises TypeError. That turned
+    an unquantifiable recommendation into a 500 from inside apply_policy
+    rather than a validation failure the caller could act on.
+    """
+    service = PolicyLifecycleService(None, None)  # type: ignore[arg-type]
+    rec = OptimizationRecommendationRecord(
+        id="rec-null-saving",
+        tenant_id=TENANT_1,
+        workload_id="predictive_maintenance",
+        recommended_strategy="Tiered routing",
+        estimated_saving=None,
+        risk_level=OptimizationRiskLevel.LOW,
+        status=OptimizationStatus.APPROVED,
+        created_at=datetime.now(UTC),
+    )
+
+    is_valid, message = service.validate_policy(rec)
+
+    assert is_valid is False
+    assert "unknown" in message.lower()

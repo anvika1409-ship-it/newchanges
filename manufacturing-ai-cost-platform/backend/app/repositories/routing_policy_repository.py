@@ -26,12 +26,18 @@ class RoutingPolicyRepository(AsyncRepository[RoutingPolicy]):
 
         The orchestrator calls this on every request; the query uses indexed
         columns (tenant_id, workload_type) so it stays fast.
+
+        ``complexity`` is normalised to the stored form. The API contract and
+        the orchestrator's ``Complexity`` enum use SIMPLE/MEDIUM/COMPLEX, while
+        ``routing_policies`` constrains the column to simple/medium/complex.
+        Querying with the API form matched nothing, so no routing policy was
+        ever applied to any request.
         """
         result = await self.session.execute(
             select(RoutingPolicy).where(
                 RoutingPolicy.tenant_id == tenant_id,
                 RoutingPolicy.workload_type == workload_type,
-                RoutingPolicy.complexity == complexity,
+                RoutingPolicy.complexity == complexity.lower(),
                 RoutingPolicy.status == "ACTIVE",
             )
         )
@@ -73,9 +79,18 @@ class RoutingPolicyRepository(AsyncRepository[RoutingPolicy]):
         return policies
 
     async def get_active_policy(
-        self, workload_type: str, tenant_id: str | None = None
+        self,
+        workload_type: str,
+        tenant_id: str | None = None,
+        complexity: str | None = None,
     ) -> RoutingPolicy | None:
-        """Get the currently active policy for a workload."""
+        """Get the currently active policy for a workload.
+
+        ``complexity`` narrows to one routing key. Without it, superseding
+        picked whichever complexity sorted first and left the real predecessor
+        ACTIVE — two ACTIVE rows for the same key, which the orchestrator's
+        single-row lookup then refused to resolve.
+        """
         stmt = (
             select(RoutingPolicy)
             .where(
@@ -87,6 +102,8 @@ class RoutingPolicyRepository(AsyncRepository[RoutingPolicy]):
         )
         if tenant_id is not None:
             stmt = stmt.where(RoutingPolicy.tenant_id == tenant_id)
+        if complexity is not None:
+            stmt = stmt.where(RoutingPolicy.complexity == complexity.lower())
 
         result = await self.session.execute(stmt)
         return result.scalars().first()
