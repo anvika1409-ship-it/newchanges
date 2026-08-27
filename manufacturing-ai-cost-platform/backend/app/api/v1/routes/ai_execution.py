@@ -123,7 +123,9 @@ async def get_orchestrator(request: Request) -> AsyncIterator[CostAwareOrchestra
     database = request.app.state.database
     async with database.session() as session:
         registry = ModelRegistryService(ModelRepository(session))
-        telemetry_recorder = TelemetryRecorder(session)
+        # The database, not this request's session: telemetry commits
+        # independently so a refusal's rollback cannot discard its own record.
+        telemetry_recorder = TelemetryRecorder(database.session)
         yield CostAwareOrchestrator(
             model_gateway=request.app.state.model_gateway,
             registry_service=registry,

@@ -11,7 +11,7 @@ never summed interchangeably (API_CONTRACT.yaml).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -70,7 +70,7 @@ class CostTracker:
             "amount_usd": amount_usd,
             "description": description,
             "provenance": provenance,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
         self._records.append(record)

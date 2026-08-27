@@ -49,6 +49,9 @@ class ExecutionPlan:
     routing_policy_version: int | None = None
 
     tenant_id: str | None = None
+    #: The authenticated caller. ARCHITECTURE.md section 15 requires user_id on
+    #: every AI request.
+    user_id: str | None = None
     plant_id: str | None = None
     department_id: str | None = None
     workload_id: str | None = None

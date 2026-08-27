@@ -129,6 +129,25 @@ class ExecutionResult:
     fallback_used: bool = False
     attempts: int = 1
 
+    # --- measurements, for telemetry (ARCHITECTURE.md section 15) ----------
+    #: Images supplied with the request.
+    image_count: int = 0
+    #: Tool calls actually made. Zero when no tools were offered to the model,
+    #: which is a measurement rather than an assumption.
+    tool_calls: int = 0
+    #: Context tokens actually consumed. ``None`` when the provider does not
+    #: report it — the plan's max_context_tokens is a limit, not a measurement,
+    #: and recording a limit as usage would overstate consumption.
+    context_tokens: int | None = None
+    #: Duration of the gateway call alone.
+    model_latency_ms: float | None = None
+    #: Retries before the successful attempt.
+    retry_count: int = 0
+    #: Terminal guardrail outcome, or ``None`` when no guardrail ran.
+    guardrail_decision: str | None = None
+    #: Total orchestration duration, including routing and backoff.
+    duration_ms: float | None = None
+
 
 class CostAwareOrchestrator:
     """Runtime routing and execution.
@@ -206,6 +225,7 @@ class CostAwareOrchestrator:
         # --- 4. identify tenant / plant / department ---------------------
         # Tenant comes from the authenticated principal, never from the body.
         tenant_id = principal.tenant_id
+        user_id = principal.subject
         decisions.append(f"tenant_from_principal={tenant_id}")
 
         # --- 5. determine workload ---------------------------------------
@@ -258,6 +278,7 @@ class CostAwareOrchestrator:
                 risk_level=risk,
                 budget_status=budget_status,
                 tenant_id=tenant_id,
+                user_id=user_id,
                 plant_id=request.plant_id,
                 department_id=request.department_id,
                 workload_id=workload_id,
@@ -315,6 +336,7 @@ class CostAwareOrchestrator:
             max_tool_calls=max_tools,
             routing_policy_version=getattr(policy, "version", None),
             tenant_id=tenant_id,
+            user_id=user_id,
             plant_id=request.plant_id,
             department_id=request.department_id,
             workload_id=workload_id,
@@ -334,8 +356,12 @@ class CostAwareOrchestrator:
         assert plan.selected_model_name is not None  # guarded by execute()
 
         # --- 19. guardrails --------------------------------------------------
+        # None when no guardrail ran: an unrecorded decision must not look like
+        # an approval that was actually evaluated.
+        guardrail_decision: str | None = None
         if self._guardrails is not None:
             await self._guardrails.check_input(request.payload)
+            guardrail_decision = "ALLOW"
 
         # Build prompt & request (multimodal if images are present)
         is_multimodal = bool(request.image_bytes or request.image_count > 0)
@@ -404,9 +430,16 @@ class CostAwareOrchestrator:
         # --- 19b. output guardrails -------------------------------------------
         if self._guardrails is not None:
             await self._guardrails.check_output(response.content)
+            guardrail_decision = "ALLOW"
 
         # --- 22/23. telemetry and normalized result ---------------------------
-        result = self._normalize(plan, response, fallback_used=fallback_used)
+        result = self._normalize(
+            plan,
+            response,
+            fallback_used=fallback_used,
+            image_count=request.image_count,
+            guardrail_decision=guardrail_decision,
+        )
         await self._record(plan, outcome="success", started=started, result=result)
         return result
 
@@ -416,6 +449,8 @@ class CostAwareOrchestrator:
         response: TextGenerationResponse,
         *,
         fallback_used: bool,
+        image_count: int = 0,
+        guardrail_decision: str | None = None,
     ) -> ExecutionResult:
         """Build the normalized result.
 
@@ -460,6 +495,16 @@ class CostAwareOrchestrator:
             quality_score=quality_score,
             fallback_used=fallback_used,
             attempts=response.attempts,
+            image_count=image_count,
+            # No tools are offered on this path, so none can have been called.
+            # A measured zero, not an assumed one.
+            tool_calls=0,
+            # The gateway reports token usage but not context consumed, so this
+            # stays unknown rather than borrowing the configured limit.
+            context_tokens=None,
+            model_latency_ms=response.latency_ms,
+            retry_count=max(response.attempts - 1, 0),
+            guardrail_decision=guardrail_decision,
         )
 
     # ===================================================================
@@ -678,6 +723,12 @@ class CostAwareOrchestrator:
         if self._telemetry is None:
             return
         try:
-            await self._telemetry.record_execution(plan=plan, outcome=outcome, result=result)
+            await self._telemetry.record_execution(
+                plan=plan,
+                outcome=outcome,
+                result=result,
+                error_code=error_code,
+                duration_ms=duration_ms,
+            )
         except Exception:
             logger.exception("orchestrator_telemetry_failed")

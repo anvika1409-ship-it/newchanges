@@ -11,7 +11,7 @@ excluding API keys, tokens and PII from event ``data``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.context import get_request_id, get_trace_id
@@ -67,7 +67,7 @@ class TelemetryEmitter:
         event: dict[str, Any] = {
             "event_type": event_type,
             "execution_id": execution_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "request_id": get_request_id(),
             "trace_id": get_trace_id(),
             "data": data or {},

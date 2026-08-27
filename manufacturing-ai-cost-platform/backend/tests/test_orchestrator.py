@@ -94,11 +94,34 @@ class FakeRegistry:
 
 
 class RecordingTelemetry:
+    """Test double mirroring TelemetryRecorder.record_execution exactly.
+
+    The signature is kept in step with the real recorder on purpose: the
+    orchestrator swallows telemetry failures, so a double that silently rejects
+    an argument would look like "no telemetry emitted" rather than a mismatch.
+    """
+
     def __init__(self) -> None:
         self.records: list[dict[str, Any]] = []
 
-    async def record_execution(self, *, plan: Any, outcome: str, result: Any = None) -> None:
-        self.records.append({"plan": plan, "outcome": outcome, "result": result})
+    async def record_execution(
+        self,
+        *,
+        plan: Any,
+        outcome: str,
+        result: Any = None,
+        error_code: str | None = None,
+        duration_ms: float | None = None,
+    ) -> None:
+        self.records.append(
+            {
+                "plan": plan,
+                "outcome": outcome,
+                "result": result,
+                "error_code": error_code,
+                "duration_ms": duration_ms,
+            }
+        )
 
 
 def build(
