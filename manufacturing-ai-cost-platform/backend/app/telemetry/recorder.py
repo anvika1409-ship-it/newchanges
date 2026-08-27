@@ -78,6 +78,7 @@ class TelemetryRecorder:
         result: Any = None,
         error_code: str | None = None,
         duration_ms: float | None = None,
+        guardrail_decision: str | None = None,
     ) -> UsageEvent | None:
         """Write the usage and cost events for an execution.
 
@@ -95,6 +96,7 @@ class TelemetryRecorder:
                 result=result,
                 error_code=error_code,
                 duration_ms=duration_ms,
+                guardrail_decision=guardrail_decision,
             )
             async with self._session_factory() as session:
                 session.add(usage_event)
@@ -117,6 +119,7 @@ class TelemetryRecorder:
         result: Any,
         error_code: str | None,
         duration_ms: float | None,
+        guardrail_decision: str | None = None,
     ) -> UsageEvent:
         return UsageEvent(
             id=str(uuid.uuid4()),
@@ -156,7 +159,10 @@ class TelemetryRecorder:
             risk_level=str(plan.risk_level),
             routing_policy_version=plan.routing_policy_version,
             budget_decision=str(plan.budget_status) if plan.budget_status else None,
-            guardrail_decision=getattr(result, "guardrail_decision", None),
+            # An explicit decision wins: on a refusal there is no result to
+            # read one from, and that is exactly when it matters most.
+            guardrail_decision=guardrail_decision
+            or getattr(result, "guardrail_decision", None),
         )
 
     # -------------------------------------------------------------- cost

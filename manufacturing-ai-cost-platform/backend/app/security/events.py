@@ -29,6 +29,16 @@ class SecurityEvent(StrEnum):
     TENANT_ISOLATION_VIOLATION = "security.tenant_isolation_violation"
     ROUTE_UNPROTECTED = "security.route_unprotected"
 
+    # Guardrail events. SECURITY.md section 20 requires prompt-injection
+    # detections, tool denials and rate-limit events to be tracked.
+    PROMPT_INJECTION_DETECTED = "security.prompt_injection_detected"
+    GUARDRAIL_REJECTED = "security.guardrail_rejected"
+    TOOL_DENIED = "security.tool_denied"
+    SENSITIVE_OUTPUT_BLOCKED = "security.sensitive_output_blocked"
+    REQUEST_REJECTED_OVERSIZED = "security.request_rejected_oversized"
+    RATE_LIMIT_EXCEEDED = "security.rate_limit_exceeded"
+    HIGH_RISK_APPROVAL_REQUIRED = "security.high_risk_approval_required"
+
 
 # Field names that must never carry a value into a log record, whatever the
 # caller believes they hold.

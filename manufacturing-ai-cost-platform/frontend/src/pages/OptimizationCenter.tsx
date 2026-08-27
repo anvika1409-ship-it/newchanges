@@ -149,7 +149,7 @@ export function OptimizationCenter() {
 
       <div
         role="note"
-        className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400"
+        className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400 md:p-4"
       >
         <strong className="font-medium text-slate-800 dark:text-slate-200">
           Reading these figures:
@@ -205,35 +205,38 @@ export function OptimizationCenter() {
         </div>
       )}
 
-      {state.kind === 'ready' &&
-        state.items.map((item) => (
-          <RecommendationCard
-            key={item.id}
-            item={item}
-            busy={busyId === item.id}
-            onApprove={() =>
-              act(
-                item.id,
-                () => decideRecommendation(item.id, { decision: 'APPROVED' }),
-                'Recommendation approved.',
-              )
-            }
-            onReject={() =>
-              act(
-                item.id,
-                () => decideRecommendation(item.id, { decision: 'REJECTED' }),
-                'Recommendation rejected.',
-              )
-            }
-            onApply={() =>
-              act(
-                item.id,
-                () => applyRecommendation(item.id, { activation_mode: 'CANARY' }),
-                'Policy activated as a canary.',
-              )
-            }
-          />
-        ))}
+      {state.kind === 'ready' && (
+        <div className="space-y-4">
+          {state.items.map((item) => (
+            <RecommendationCard
+              key={item.id}
+              item={item}
+              busy={busyId === item.id}
+              onApprove={() =>
+                act(
+                  item.id,
+                  () => decideRecommendation(item.id, { decision: 'APPROVED' }),
+                  'Recommendation approved.',
+                )
+              }
+              onReject={() =>
+                act(
+                  item.id,
+                  () => decideRecommendation(item.id, { decision: 'REJECTED' }),
+                  'Recommendation rejected.',
+                )
+              }
+              onApply={() =>
+                act(
+                  item.id,
+                  () => applyRecommendation(item.id, { activation_mode: 'CANARY' }),
+                  'Policy activated as a canary.',
+                )
+              }
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -257,9 +260,11 @@ function RecommendationCard({
 
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="font-mono text-sm text-slate-500 dark:text-slate-400">{item.id}</h2>
+          <h2 className="break-all font-mono text-sm text-slate-500 dark:text-slate-400 sm:break-normal">
+            {item.id}
+          </h2>
           {item.workload_id && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               workload: {item.workload_id}
@@ -293,7 +298,7 @@ function RecommendationCard({
         </div>
       </dl>
 
-      <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Est. saving" sub={item.provenance}>
           <Money value={item.estimated_saving} />
         </Metric>

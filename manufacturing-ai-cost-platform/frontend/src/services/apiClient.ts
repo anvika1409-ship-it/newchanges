@@ -19,6 +19,10 @@ const REQUEST_ID_HEADER = 'X-Request-ID';
 
 let authToken: string | null = null;
 
+export function hasAuthToken(): boolean {
+  return Boolean(authToken && authToken.trim().length > 0);
+}
+
 /** Set or clear the bearer token used for protected endpoints. */
 export function setAuthToken(token: string | null): void {
   authToken = token;

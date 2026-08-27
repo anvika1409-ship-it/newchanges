@@ -15,8 +15,8 @@ Tenant is taken from the authenticated principal. ``plant_id`` and
 
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request, status
@@ -31,7 +31,10 @@ from app.orchestrator import (
 )
 from app.repositories.model_repository import ModelRepository
 from app.repositories.routing_policy_repository import RoutingPolicyRepository
-from app.security.dependencies import CurrentPrincipal
+from app.guardrails.workload_guardrails import build_workload_guardrails
+from app.security.dependencies import RequirePermission
+from app.security.permissions import Permission
+from app.security.principal import Principal
 from app.services.model_registry import ModelRegistryService
 from app.telemetry.recorder import TelemetryRecorder
 
@@ -132,6 +135,11 @@ async def get_orchestrator(request: Request) -> AsyncIterator[CostAwareOrchestra
             budget_evaluator=RepositoryBudgetEvaluator(_BudgetLimitSource(session)),
             routing_policy_repository=RoutingPolicyRepository(session),
             telemetry_recorder=telemetry_recorder,
+            # Guardrails run on every execution: the input layer before
+            # routing, the output layer before a result is returned. Without
+            # this they were a tested library that nothing invoked
+            # (AI_WORKFLOWS.md section 8).
+            guardrails=build_workload_guardrails(request.app.state.settings),
         )
 
 
@@ -166,7 +174,10 @@ Orchestrator = Annotated[CostAwareOrchestrator, Depends(get_orchestrator)]
 )
 async def execute_ai_workload(
     body: AIExecutionRequestModel,
-    principal: CurrentPrincipal,
+    # Authentication alone is not enough: executing a workload spends money,
+    # so it needs the AI_EXECUTE permission. A read-only role must not be able
+    # to incur cost (SECURITY.md section 4).
+    principal: Annotated[Principal, Depends(RequirePermission(Permission.AI_EXECUTE))],
     orchestrator: Orchestrator,
 ) -> AIExecutionResponseModel:
     """Route and execute one AI workload.

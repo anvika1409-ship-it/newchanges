@@ -18,36 +18,24 @@ from typing import Any
 
 import pytest
 
-try:
-    from app.integrations.llm.client import MockModelGateway as BaseMockGateway
-    from app.integrations.llm.interface import Role, TextGenerationRequest as ModelRequest
+from app.integrations.llm.client import MockModelGateway as BaseMockGateway
+from app.integrations.llm.interface import Role, TextGenerationRequest as ModelRequest
 
-    class MockModelGateway(BaseMockGateway):
-        def __init__(self, canned_content: str = "", report_usage: bool = True):
-            super().__init__(canned_text=canned_content, report_usage=report_usage)
+class MockModelGateway(BaseMockGateway):
+    def __init__(self, canned_content: str = "", report_usage: bool = True):
+        super().__init__(canned_text=canned_content, report_usage=report_usage)
 
-        @property
-        def call_count(self) -> int:
-            return len(self.calls)
+    @property
+    def call_count(self) -> int:
+        return len(self.calls)
 
-        def get_request(self, index: int = 0):
-            if not self.calls:
-                raise IndexError("No calls made")
-            item = self.calls[index]
-            if isinstance(item, tuple):
-                return item[1]
-            return item
-
-    _USE_LLM_CLIENT = True
-except ImportError:
-    from app.integrations.model_gateway.base import ModelRequest, Role
-    from app.integrations.model_gateway.mock import MockModelGateway as BaseMockGateway
-
-    class MockModelGateway(BaseMockGateway):  # type: ignore[no-redef]
-        def get_request(self, index: int = 0):
-            return self.calls[index]
-
-    _USE_LLM_CLIENT = False
+    def get_request(self, index: int = 0):
+        if not self.calls:
+            raise IndexError("No calls made")
+        item = self.calls[index]
+        if isinstance(item, tuple):
+            return item[1]
+        return item
 
 from app.services.execution import AIExecutionService
 from app.telemetry.emitter import TelemetryEmitter

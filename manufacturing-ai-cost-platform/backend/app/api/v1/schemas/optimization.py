@@ -74,10 +74,28 @@ class OptimizationAnalyzeAccepted(BaseModel):
 
 
 class ApprovalDecision(BaseModel):
-    """Request body for POST /optimization/{id}/approve matching API_CONTRACT.yaml."""
+    """Request body for POST /optimization/{id}/approve.
 
-    approved: bool = True
-    reason: str = ""
+    Matches the contract's ``ApprovalDecision``: an explicit ``decision``, not a
+    boolean that defaults to approving.
+
+    The previous shape was ``{approved: bool = True, reason: str}``. Because the
+    frontend and the contract both send ``{decision, comments}``, the ``approved``
+    field was never present and fell back to its default — so a REJECTED
+    decision was recorded as an approval. An approval control must never have a
+    permissive default.
+    """
+
+    decision: Literal["APPROVED", "REJECTED"]
+    comments: str | None = None
+
+    @property
+    def approved(self) -> bool:
+        return self.decision == "APPROVED"
+
+    @property
+    def reason(self) -> str:
+        return self.comments or ""
 
 
 class OptimizationApplyRequest(BaseModel):

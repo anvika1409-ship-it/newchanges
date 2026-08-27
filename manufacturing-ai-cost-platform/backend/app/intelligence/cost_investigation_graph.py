@@ -30,39 +30,24 @@ import asyncio
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from app.core.logging import get_logger
-from app.intelligence.cost_anomaly_detector import CostAnomalyDetector, DetectedAnomaly
-from app.services.cost_service import CostService, CostSummary
-from app.services.policy_service import PolicyProposal, PolicyService
 
-try:
-    from app.integrations.llm.interface import (
-        Message,
-        ModelGatewayInterface,
-        Role,
-        TextGenerationRequest,
-    )
-    _USE_LLM_INTERFACE = True
-except ImportError:
-    try:
-        from app.integrations.model_gateway.base import (
-            Message,
-            ModelGatewayInterface,
-            ModelRequest as TextGenerationRequest,
-            Role,
-        )
-        _USE_LLM_INTERFACE = False
-    except ImportError:
-        Message = Any  # type: ignore
-        ModelGatewayInterface = Any  # type: ignore
-        Role = Any  # type: ignore
-        TextGenerationRequest = Any  # type: ignore
-        _USE_LLM_INTERFACE = False
+# Imported directly: a missing gateway interface must fail loudly rather
+# than degrade to `Any`, which would silently drop the type contract that
+# keeps LLM access behind the gateway (AI_DEVELOPMENT_RULES.md section 4.4).
+from app.integrations.llm.interface import (
+    Message,
+    ModelGatewayInterface,
+    Role,
+    TextGenerationRequest,
+)
+from app.intelligence.cost_anomaly_detector import CostAnomalyDetector
+from app.services.cost_service import CostService
+from app.services.policy_service import PolicyService
 
 logger = get_logger(__name__)
 
@@ -215,7 +200,7 @@ class CostInvestigationWorkflow:
                 timeout=self._timeout_seconds,
             )
             return self._format_result(final_state)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error("cost_investigation_timeout", extra={"request_id": req_id})
             return CostInvestigationResult(
                 request_id=req_id,

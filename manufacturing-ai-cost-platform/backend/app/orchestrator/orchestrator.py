@@ -41,6 +41,7 @@ from app.core.context import get_request_id, get_trace_id
 from app.core.errors import PolicyConflictError
 from app.core.logging import get_logger
 from app.db.models.registry import ModelRegistryEntry
+from app.guardrails.errors import GuardrailViolation
 from app.integrations.llm.errors import ModelGatewayError
 from app.integrations.llm.interface import (
     ImagePart,
@@ -360,7 +361,20 @@ class CostAwareOrchestrator:
         # an approval that was actually evaluated.
         guardrail_decision: str | None = None
         if self._guardrails is not None:
-            await self._guardrails.check_input(request.payload)
+            try:
+                await self._guardrails.check_input(request.payload)
+            except GuardrailViolation as violation:
+                # Refusals are recorded too. A guardrail rejection that leaves
+                # no trace is indistinguishable from a request that never
+                # happened (AI_DEVELOPMENT_RULES.md section 8).
+                await self._record(
+                    plan,
+                    outcome="error",
+                    started=started,
+                    error_code=violation.code,
+                    guardrail_decision=violation.decision,
+                )
+                raise
             guardrail_decision = "ALLOW"
 
         # Build prompt & request (multimodal if images are present)
@@ -692,6 +706,7 @@ class CostAwareOrchestrator:
         started: float,
         result: ExecutionResult | None = None,
         error_code: str | None = None,
+        guardrail_decision: str | None = None,
     ) -> None:
         """Step 22: emit telemetry for every execution, including refusals.
 
@@ -713,6 +728,7 @@ class CostAwareOrchestrator:
                 "routing_policy_version": plan.routing_policy_version,
                 "outcome": outcome,
                 "error_code": error_code,
+                "guardrail_decision": guardrail_decision,
                 "duration_ms": duration_ms,
                 "input_tokens": getattr(result, "input_tokens", None),
                 "output_tokens": getattr(result, "output_tokens", None),
@@ -729,6 +745,7 @@ class CostAwareOrchestrator:
                 result=result,
                 error_code=error_code,
                 duration_ms=duration_ms,
+                guardrail_decision=guardrail_decision,
             )
         except Exception:
             logger.exception("orchestrator_telemetry_failed")

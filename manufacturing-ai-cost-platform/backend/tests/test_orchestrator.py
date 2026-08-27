@@ -112,6 +112,7 @@ class RecordingTelemetry:
         result: Any = None,
         error_code: str | None = None,
         duration_ms: float | None = None,
+        guardrail_decision: str | None = None,
     ) -> None:
         self.records.append(
             {
@@ -120,6 +121,7 @@ class RecordingTelemetry:
                 "result": result,
                 "error_code": error_code,
                 "duration_ms": duration_ms,
+                "guardrail_decision": guardrail_decision,
             }
         )
 

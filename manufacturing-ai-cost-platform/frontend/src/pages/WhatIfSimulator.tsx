@@ -212,7 +212,10 @@ export function WhatIfSimulator() {
           ) : (
             <div className="mt-3 space-y-2">
               {models.map((model) => (
-                <div key={model.id} className="flex flex-wrap items-center gap-3">
+                <div
+                  key={model.id}
+                  className="flex flex-col gap-2 rounded-md border border-slate-200 p-2 sm:flex-row sm:items-center sm:gap-3 dark:border-slate-700"
+                >
                   <label
                     htmlFor={`mix-${model.id}`}
                     className="flex-1 truncate font-mono text-xs text-slate-700 dark:text-slate-300"
@@ -227,20 +230,22 @@ export function WhatIfSimulator() {
                       </span>
                     )}
                   </label>
-                  <input
-                    id={`mix-${model.id}`}
-                    type="number"
-                    min={0}
-                    max={100}
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={mix[model.id] ?? ''}
-                    onChange={(event) =>
-                      setMix((previous) => ({ ...previous, [model.id]: event.target.value }))
-                    }
-                    className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                  />
-                  <span className="text-xs text-slate-500">%</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id={`mix-${model.id}`}
+                      type="number"
+                      min={0}
+                      max={100}
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={mix[model.id] ?? ''}
+                      onChange={(event) =>
+                        setMix((previous) => ({ ...previous, [model.id]: event.target.value }))
+                      }
+                      className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm sm:w-24 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                    />
+                    <span className="text-xs text-slate-500">%</span>
+                  </div>
                 </div>
               ))}
               <p
@@ -322,7 +327,7 @@ function SimulationOutput({
         />
       </div>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Quality impact</p>
           <p className="mt-0.5 text-lg font-semibold text-slate-900 dark:text-slate-100">

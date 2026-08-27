@@ -45,6 +45,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        enable_decoding=False,
     )
 
     # --- Application -------------------------------------------------------
@@ -228,7 +229,10 @@ class Settings(BaseSettings):
             # RFC 7518 section 3.2: an HMAC key must be at least as long as the
             # hash output. A shorter symmetric secret is brute-forceable, and
             # anyone who recovers it can mint tokens for any tenant.
-            if self.jwt_algorithm.upper().startswith("HS") and len(secret.encode()) < 32:
+            if (
+                self.jwt_algorithm.upper().startswith("HS")
+                and len(secret.encode()) < 32
+            ):
                 raise ValueError(
                     "JWT_SECRET must be at least 32 bytes for HMAC algorithms "
                     "(RFC 7518 section 3.2). Generate one with: "

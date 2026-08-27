@@ -15,13 +15,10 @@ import uuid
 from typing import Any
 
 from app.core.logging import get_logger
-try:
-    from app.integrations.llm.interface import ModelGatewayInterface
-except ImportError:
-    try:
-        from app.integrations.model_gateway.base import ModelGatewayInterface
-    except ImportError:
-        ModelGatewayInterface = Any  # type: ignore
+
+# Imported directly. The removed fallback ended in `ModelGatewayInterface =
+# Any`, which would have accepted any object as a gateway.
+from app.integrations.llm.interface import ModelGatewayInterface
 from app.telemetry.emitter import TelemetryEmitter
 from app.telemetry.tracker import CostTracker
 from app.workloads.predictive_maintenance import PredictiveMaintenanceWorkflow

@@ -26,6 +26,7 @@ from app.api.v1.schemas.optimization import (
     SimulationRequest,
     SimulationResult,
 )
+from app.core.errors import NotFoundError
 from app.db.models.optimization import OptimizationRecommendationRecord, OptimizationStatus
 from app.optimization.engine import OptimizationEngine
 from app.optimization.simulation import Baseline, SimulationInput, simulate
@@ -33,6 +34,7 @@ from app.optimization.simulation import ModelMixEntry as DomainMixEntry
 from app.repositories.cost_repository import CostAggregationRepository
 from app.repositories.model_repository import ModelRepository
 from app.repositories.optimization_repository import OptimizationRepository
+from app.repositories.workload_repository import WorkloadRepository
 
 # Imported unconditionally. A try/except around this import turned a
 # protected endpoint into an open one whenever the import failed, which is a
@@ -119,6 +121,16 @@ async def analyze_optimization(
     engine = OptimizationEngine()
     req_id = f"opt-req-{uuid.uuid4().hex[:8]}"
 
+    # An unknown workload previously reached the INSERT and failed on the
+    # foreign key, surfacing a raw database error as a 500. A caller-supplied
+    # id that does not exist is a client error, and the message must not leak
+    # database internals (AI_DEVELOPMENT_RULES.md sections 18 and 26).
+    if body.workload_id:
+        async with database.session() as session:
+            workload = await WorkloadRepository(session).get_by_id(body.workload_id)
+        if workload is None:
+            raise NotFoundError("Unknown workload_id")
+
     analysis_result = engine.analyze(
         workload_id=body.workload_id,
         target_saving_percent=body.target_saving_percent,
@@ -162,13 +174,17 @@ async def analyze_optimization(
 async def approve_recommendation(
     request: Request,
     id: str,
-    body: ApprovalDecision | None = None,
+    body: ApprovalDecision,
 ) -> OptimizationRecommendation:
-    """Approve or reject a pending optimization recommendation."""
+    """Approve or reject a pending optimization recommendation.
+
+    ``body`` is required and ``decision`` is explicit: there is no default that
+    approves. An omitted body is a 422, not a silent approval.
+    """
     database = request.app.state.database
     principal = getattr(request.state, "principal", None)
-    approved = body.approved if body else True
-    reason = body.reason if body else ""
+    approved = body.approved
+    reason = body.reason
 
     from fastapi import HTTPException
 

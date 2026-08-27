@@ -34,7 +34,7 @@ import {
   getMockOptimizationRecommendations,
   getMockWorkloads,
 } from '../lib/mock-data';
-import { apiClient, ApiRequestError } from '../services/apiClient';
+import { apiClient, ApiRequestError, hasAuthToken } from '../services/apiClient';
 
 /**
  * Dashboard data hooks.
@@ -95,11 +95,23 @@ async function fetchWithFallback<TWire, TView>(
   adapt: (wire: TWire) => TView,
 ): Promise<ApiEnvelope<TView>> {
   try {
+    if (!hasAuthToken()) {
+      throw new ApiRequestError(401, {
+        code: 'unauthorized',
+        message: 'Authentication required',
+        request_id: null,
+        details: null,
+      });
+    }
     const wire = await apiClient.get<TWire>(path, { query });
     return { data: adapt(wire), source: 'live', fetched_at: new Date().toISOString() };
   } catch (err) {
     if (err instanceof ApiRequestError && err.status !== 0) {
-      throw err;
+      return {
+        data: adapt(mockFactory()),
+        source: 'demo',
+        fetched_at: new Date().toISOString(),
+      };
     }
     return {
       data: adapt(mockFactory()),

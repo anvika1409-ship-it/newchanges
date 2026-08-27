@@ -315,7 +315,9 @@ class TestPolicyLifecycleAPI:
 
         response = await client.post(
             f"/api/v1/optimization/{rec.id}/approve",
-            json={"approved": True, "reason": "Approved for Q3 savings"},
+            # The contract's ApprovalDecision shape: an explicit decision, not a
+            # boolean that defaults to approving.
+            json={"decision": "APPROVED", "comments": "Approved for Q3 savings"},
             headers=finops_headers,
         )
         assert response.status_code == 200
@@ -332,7 +334,7 @@ class TestPolicyLifecycleAPI:
 
         response = await client.post(
             f"/api/v1/optimization/{rec.id}/approve",
-            json={"approved": True},
+            json={"decision": "APPROVED"},
             headers=viewer_headers,
         )
         assert response.status_code == 403
@@ -362,7 +364,7 @@ class TestPolicyLifecycleAPI:
         # 1. Approve
         approve_resp = await client.post(
             f"/api/v1/optimization/{rec.id}/approve",
-            json={"approved": True},
+            json={"decision": "APPROVED"},
             headers=finops_headers,
         )
         assert approve_resp.status_code == 200

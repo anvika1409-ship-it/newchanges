@@ -32,29 +32,18 @@ from app.intelligence.supply_chain_optimizer import (
     SupplyChainOptimizer,
 )
 
-try:
-    from app.integrations.llm.interface import (
-        Message,
-        ModelGatewayInterface,
-        Role,
-        TextGenerationRequest,
-    )
-    _USE_LLM_INTERFACE = True
-except ImportError:
-    try:
-        from app.integrations.model_gateway.base import (
-            Message,
-            ModelGatewayInterface,
-            ModelRequest as TextGenerationRequest,
-            Role,
-        )
-        _USE_LLM_INTERFACE = False
-    except ImportError:
-        Message = Any  # type: ignore
-        ModelGatewayInterface = Any  # type: ignore
-        Role = Any  # type: ignore
-        TextGenerationRequest = Any  # type: ignore
-        _USE_LLM_INTERFACE = False
+# Imported directly. The previous form was a three-level try/except cascade that
+# fell back to `app.integrations.model_gateway.base` — a module removed when the
+# gateway moved to `app/integrations/llm/` — and then to `ModelGatewayInterface
+# = Any`, which would have silently disabled the type contract that keeps LLM
+# access behind the gateway. A missing gateway interface must fail loudly at
+# import, not degrade to `Any` (AI_DEVELOPMENT_RULES.md sections 4.4 and 26).
+from app.integrations.llm.interface import (
+    Message,
+    ModelGatewayInterface,
+    Role,
+    TextGenerationRequest,
+)
 
 from app.telemetry.emitter import TelemetryEmitter
 from app.telemetry.tracker import CostProvenance, CostTracker, CostType

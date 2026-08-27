@@ -14,10 +14,7 @@ from fastapi import FastAPI
 from app.cache.redis_client import NullCache
 from app.core.config import Settings
 from app.db.session import Database
-try:
-    from app.integrations.llm.interface import ModelGatewayInterface
-except ImportError:
-    from app.integrations.model_gateway.base import ModelGatewayInterface
+from app.integrations.llm.interface import ModelGatewayInterface
 from app.main import create_app
 
 
