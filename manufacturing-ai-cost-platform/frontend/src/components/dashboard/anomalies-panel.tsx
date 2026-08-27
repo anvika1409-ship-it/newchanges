@@ -5,7 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { formatCompactCurrency, formatRelativeTime } from '@/lib/format'
+import {
+  formatOptionalNumber,
+  formatOptionalSignedPercent,
+  formatRelativeTime,
+} from '@/lib/format'
 import { useAnomalies } from '@/hooks/use-dashboard-data'
 import { PanelEmpty, PanelError } from './panel-states'
 import type { Anomaly } from '@/lib/types'
@@ -66,10 +70,9 @@ export function AnomaliesPanel() {
                     </div>
                     <p className="text-sm text-muted-foreground">{anomaly.summary}</p>
                     <p className="font-mono text-xs tabular-nums text-muted-foreground">
-                      Expected {formatCompactCurrency(anomaly.expected_value, anomaly.currency)} &rarr; observed{' '}
-                      {formatCompactCurrency(anomaly.observed_value, anomaly.currency)} (
-                      {anomaly.deviation_percent > 0 ? '+' : ''}
-                      {anomaly.deviation_percent.toFixed(0)}%)
+                      Expected {formatOptionalNumber(anomaly.expected_value)} &rarr; observed{' '}
+                      {formatOptionalNumber(anomaly.observed_value)} (
+                      {formatOptionalSignedPercent(anomaly.deviation_percent)})
                     </p>
                   </div>
                 </li>

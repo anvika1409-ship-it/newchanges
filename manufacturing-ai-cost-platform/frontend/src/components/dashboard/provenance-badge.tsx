@@ -1,4 +1,4 @@
-import { Activity, FlaskConical, Radar, Sigma } from 'lucide-react'
+import { Activity, CircleSlash, FlaskConical, Radar, Sigma } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Provenance } from '@/lib/types'
 
@@ -25,6 +25,13 @@ const PROVENANCE_CONFIG: Record<
     label: 'Simulated',
     icon: FlaskConical,
     className: 'border-muted-foreground/30 bg-muted text-muted-foreground',
+  },
+  // A figure the platform could not compute. Distinct from zero, and shown so
+  // a gap in the data is visible rather than silently rendered as a number.
+  UNAVAILABLE: {
+    label: 'Unavailable',
+    icon: CircleSlash,
+    className: 'border-muted-foreground/20 bg-muted/50 text-muted-foreground',
   },
 }
 

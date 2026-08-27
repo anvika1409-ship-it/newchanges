@@ -5,6 +5,8 @@ import { cn } from '../lib/utils';
 const NAV = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/quality', label: 'Quality Inspection' },
+  { to: '/optimization', label: 'Optimization' },
+  { to: '/simulator', label: 'What-if' },
   { to: '/status', label: 'Status' },
 ];
 

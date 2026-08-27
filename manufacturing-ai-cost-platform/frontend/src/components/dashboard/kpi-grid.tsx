@@ -2,7 +2,11 @@
 
 import { useMemo } from 'react'
 import { AlertOctagon, CalendarClock, CircleGauge, IndianRupee, PiggyBank, Target, Wallet } from 'lucide-react'
-import { formatCompactCurrency } from '@/lib/format'
+import {
+  formatCompactCurrency,
+  formatOptionalCurrency,
+  formatOptionalPercent,
+} from '@/lib/format'
 import { useBudgetStatus, useCostSummary, useOptimizationRecommendations } from '@/hooks/use-dashboard-data'
 import { KpiCard, KpiCardSkeleton } from './kpi-card'
 import { PanelError } from './panel-states'
@@ -24,7 +28,9 @@ export function KpiGrid({ plantId }: { plantId?: string }) {
     const items = optimizations.data?.data ?? []
     return items
       .filter((item) => item.status === 'APPROVED' || item.status === 'APPLIED')
-      .reduce((sum, item) => sum + item.estimated_saving_amount, 0)
+      // A recommendation with no computed saving contributes nothing, rather
+      // than poisoning the total with NaN.
+      .reduce((sum, item) => sum + (item.estimated_saving_amount ?? 0), 0)
   }, [optimizations.data])
 
   if (hasError) {
@@ -53,8 +59,13 @@ export function KpiGrid({ plantId }: { plantId?: string }) {
   const cost = summary.data.data
   const currency = cost.currency
 
-  const overrunAmount = enterpriseBudget?.projected_overrun_amount ?? 0
-  const overrunPercent = enterpriseBudget?.projected_overrun_percent ?? 0
+  // Overrun is derived here rather than read from the API: /budgets/status
+  // returns consumption, not a projected overrun. Deriving it keeps the number
+  // traceable to something the API actually sent.
+  const consumedAmount = enterpriseBudget?.consumed_amount ?? 0
+  const budgetAmount = enterpriseBudget?.amount ?? 0
+  const overrunAmount = budgetAmount > 0 ? Math.max(consumedAmount - budgetAmount, 0) : 0
+  const overrunPercent = budgetAmount > 0 ? (overrunAmount / budgetAmount) * 100 : 0
   const isOverBudget = overrunAmount > 0
 
   return (
@@ -68,29 +79,35 @@ export function KpiGrid({ plantId }: { plantId?: string }) {
       />
       <KpiCard
         label="Today's cost"
-        value={formatCompactCurrency(cost.today_cost, currency)}
-        subtext="Since 00:00 IST"
-        provenance="ACTUAL"
+        value={formatOptionalCurrency(cost.today_cost, currency)}
+        subtext="Needs a windowed /cost/summary call"
+        provenance="UNAVAILABLE"
         icon={<CalendarClock />}
       />
       <KpiCard
         label="Monthly cost"
-        value={formatCompactCurrency(cost.month_to_date_cost, currency)}
-        subtext="Month-to-date across all plants"
-        provenance="ACTUAL"
+        value={formatOptionalCurrency(cost.month_to_date_cost, currency)}
+        subtext="Needs a windowed /cost/summary call"
+        provenance="UNAVAILABLE"
         icon={<Wallet />}
       />
       <KpiCard
         label="Budget used"
-        value={`${cost.budget_consumed_percent.toFixed(1)}%`}
+        value={formatOptionalPercent(cost.budget_consumed_percent)}
         subtext={enterpriseBudget ? enterpriseBudget.scope_label : 'Enterprise monthly budget'}
-        provenance="ACTUAL"
-        tone={cost.budget_consumed_percent >= 90 ? 'destructive' : cost.budget_consumed_percent >= 80 ? 'warning' : 'default'}
+        provenance={cost.budget_consumed_percent === null ? 'UNAVAILABLE' : 'ACTUAL'}
+        tone={
+          (cost.budget_consumed_percent ?? 0) >= 90
+            ? 'destructive'
+            : (cost.budget_consumed_percent ?? 0) >= 80
+              ? 'warning'
+              : 'default'
+        }
         icon={<CircleGauge />}
       />
       <KpiCard
         label="Projected month-end"
-        value={formatCompactCurrency(cost.projected_month_end_cost, currency)}
+        value={formatOptionalCurrency(cost.forecast_month_end_cost, currency)}
         subtext="Forecast at current burn rate"
         provenance="FORECAST"
         icon={<Target />}

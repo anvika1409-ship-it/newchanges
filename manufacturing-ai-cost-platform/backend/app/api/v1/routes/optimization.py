@@ -7,7 +7,7 @@ matching API_CONTRACT.yaml.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 
@@ -22,9 +22,16 @@ from app.api.v1.schemas.optimization import (
     OptimizationRecommendationList,
     OptimizationRollbackRequest,
     OptimizationRollbackResult,
+    SimulationFigure,
+    SimulationRequest,
+    SimulationResult,
 )
 from app.db.models.optimization import OptimizationRecommendationRecord, OptimizationStatus
 from app.optimization.engine import OptimizationEngine
+from app.optimization.simulation import Baseline, SimulationInput, simulate
+from app.optimization.simulation import ModelMixEntry as DomainMixEntry
+from app.repositories.cost_repository import CostAggregationRepository
+from app.repositories.model_repository import ModelRepository
 from app.repositories.optimization_repository import OptimizationRepository
 
 # Imported unconditionally. A try/except around this import turned a
@@ -32,6 +39,7 @@ from app.repositories.optimization_repository import OptimizationRepository
 # silent authentication bypass (SECURITY.md section 18,
 # AI_DEVELOPMENT_RULES.md section 26).
 from app.security.dependencies import get_current_principal
+from app.security.scope import AuthorizedScope, ScopeConstraint
 
 _AUTH_DEPS = [Depends(get_current_principal)]
 
@@ -163,6 +171,7 @@ async def approve_recommendation(
     reason = body.reason if body else ""
 
     from fastapi import HTTPException
+
     from app.repositories.policy_repository import PolicyRepository
     from app.services.policy_lifecycle import PolicyAuthorizationError, PolicyLifecycleService
 
@@ -225,6 +234,7 @@ async def apply_recommendation(
     reason = body.reason if body else ""
 
     from fastapi import HTTPException
+
     from app.repositories.policy_repository import PolicyRepository
     from app.services.policy_lifecycle import PolicyConflictError, PolicyLifecycleService
 
@@ -274,6 +284,7 @@ async def rollback_recommendation(
     reason = body.reason if body else ""
 
     from fastapi import HTTPException
+
     from app.repositories.policy_repository import PolicyRepository
     from app.services.policy_lifecycle import PolicyConflictError, PolicyLifecycleService
 
@@ -300,3 +311,109 @@ async def rollback_recommendation(
             reactivated_policy_id=reactivated.id if reactivated else None,
             reactivated_policy_version=reactivated.version if reactivated else None,
         )
+
+
+# ── What-if simulation (AI_WORKFLOWS.md section 10) ────────────────────────
+async def _load_baseline(session: Any, *, tenant_id: str, currency: str) -> Baseline:
+    """Measured spend for this tenant, from recorded telemetry.
+
+    Read through the aggregation repository so the scope filter and the
+    actual/estimated split are applied exactly as the cost endpoints apply them,
+    rather than reimplemented here.
+    """
+    scope = AuthorizedScope(
+        tenant_id=tenant_id, branches=(ScopeConstraint(tenant_id=tenant_id),)
+    )
+    totals = await CostAggregationRepository(session).summary(scope)
+    return Baseline(
+        actual_cost=totals.actual_cost,
+        estimated_cost=totals.estimated_cost,
+        total_requests=totals.total_requests,
+        currency=currency,
+    )
+
+
+async def _load_registry(session: Any, model_ids: list[str]) -> dict[str, Any]:
+    """The registry entries named by the mix, keyed by id.
+
+    A id that resolves to nothing is simply absent, and the simulator treats an
+    absent model as unpriced rather than free.
+    """
+    repository = ModelRepository(session)
+    found: dict[str, Any] = {}
+    for model_id in dict.fromkeys(model_ids):
+        entry = await repository.get_by_id(model_id)
+        if entry is not None:
+            found[model_id] = entry
+    return found
+
+
+@router.post(
+    "/simulate",
+    summary="Run a what-if simulation",
+    response_model=SimulationResult,
+    dependencies=_AUTH_DEPS,
+)
+async def simulate_optimization(
+    request: Request,
+    body: SimulationRequest,
+) -> SimulationResult:
+    """Compare current, forecast and optimized cost under given assumptions.
+
+    Read-only. No policy is created, approved or activated and no model is
+    invoked; the computation is arithmetic over recorded telemetry and registry
+    pricing. Tenant comes from the authenticated principal, never the body
+    (SECURITY.md section 5).
+    """
+    principal = request.state.principal
+    database = request.app.state.database
+    currency = request.app.state.settings.platform_base_currency
+
+    async with database.session() as session:
+        baseline = await _load_baseline(
+            session, tenant_id=principal.tenant_id, currency=currency
+        )
+        registry = await _load_registry(
+            session, [entry.model_id for entry in body.model_mix]
+        )
+
+    result = simulate(
+        SimulationInput(
+            request_volume=body.request_volume,
+            production_volume=body.production_volume,
+            image_volume=body.image_volume,
+            budget_amount=body.budget_amount,
+            model_mix=tuple(
+                DomainMixEntry(model_id=e.model_id, share_percent=e.share_percent)
+                for e in body.model_mix
+            ),
+            horizon_days=body.horizon_days,
+            workload_id=body.workload_id,
+        ),
+        baseline,
+        registry,
+        # Baseline quality is not yet aggregated from telemetry, so quality
+        # impact reports null rather than an invented "no change".
+        baseline_quality=None,
+    )
+
+    def _figure(value: Any) -> SimulationFigure:
+        return SimulationFigure(
+            amount=value.amount,
+            currency=value.currency,
+            provenance=str(value.provenance),
+        )
+
+    return SimulationResult(
+        horizon_days=result.horizon_days,
+        current_cost=_figure(result.current_cost),
+        forecast_cost=_figure(result.forecast_cost),
+        optimized_cost=_figure(result.optimized_cost),
+        estimated_saving=_figure(result.estimated_saving),
+        estimated_saving_percent=result.estimated_saving_percent,
+        quality_impact_percent=result.quality_impact_percent,
+        risk_level=str(result.risk_level),
+        within_budget=result.within_budget,
+        unpriced_model_ids=list(result.unpriced_model_ids),
+        assumptions=list(result.assumptions),
+    )

@@ -523,6 +523,48 @@ paths:
         default:
           $ref: "#/components/responses/InternalError"
 
+  /optimization/simulate:
+    post:
+      tags: [Optimization]
+      summary: Run a what-if simulation
+      description: >
+        Implements the What-if Simulation Workflow (AI_WORKFLOWS.md section 10):
+        the caller varies volume, budget and model-mix assumptions, and the
+        platform compares current, forecast and optimized cost.
+
+        Every figure returned is SIMULATED or FORECAST and must be displayed as
+        such. Nothing here is a production change: no policy is created,
+        approved or activated, and no model is invoked. The computation is
+        deterministic arithmetic over recorded telemetry and registry pricing —
+        no LLM is consulted (AI_DEVELOPMENT_RULES.md sections 7 and 17).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationRequest"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        default:
+          $ref: "#/components/responses/InternalError"
+
   /optimization/{id}/approve:
     post:
       tags: [Optimization]
@@ -1640,6 +1682,125 @@ components:
             $ref: "#/components/schemas/OptimizationRecommendation"
         page:
           $ref: "#/components/schemas/PageInfo"
+
+    ModelMixEntry:
+      type: object
+      required:
+        - model_id
+        - share_percent
+      properties:
+        model_id:
+          type: string
+          description: models.id from the registry.
+        share_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Share of request volume routed to this model.
+
+    SimulationRequest:
+      type: object
+      description: >
+        Assumptions to simulate. Inputs match AI_WORKFLOWS.md section 10.
+      required:
+        - request_volume
+      properties:
+        workload_id:
+          type: string
+          description: >
+            Scopes the baseline to one workload. Omitted means the whole tenant.
+        production_volume:
+          type: integer
+          minimum: 0
+          description: Units produced over the horizon.
+        image_volume:
+          type: integer
+          minimum: 0
+          description: Images inspected over the horizon.
+        request_volume:
+          type: integer
+          minimum: 0
+          description: AI requests over the horizon.
+        budget_amount:
+          type: number
+          minimum: 0
+          description: Budget to compare the simulated cost against.
+        model_mix:
+          type: array
+          description: >
+            Proposed routing mix. Shares should total 100. A model whose
+            registry pricing is unknown cannot be costed and is reported in
+            unpriced_model_ids rather than assumed free.
+          items:
+            $ref: "#/components/schemas/ModelMixEntry"
+        horizon_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 30
+
+    SimulationFigure:
+      type: object
+      description: One cost figure with its provenance attached.
+      properties:
+        amount:
+          type: number
+          nullable: true
+          description: Null when the figure could not be computed.
+        currency:
+          type: string
+          nullable: true
+        provenance:
+          type: string
+          enum: [ACTUAL, ESTIMATED, FORECAST, SIMULATED, UNAVAILABLE]
+
+    SimulationResult:
+      type: object
+      description: >
+        A comparison, never a commitment. Applying any of it requires the
+        normal recommendation lifecycle: validation, approval, versioned policy
+        (SECURITY.md section 15).
+      properties:
+        provenance:
+          type: string
+          enum: [SIMULATED]
+          description: The result as a whole is simulated.
+        horizon_days:
+          type: integer
+        current_cost:
+          $ref: "#/components/schemas/SimulationFigure"
+        forecast_cost:
+          $ref: "#/components/schemas/SimulationFigure"
+        optimized_cost:
+          $ref: "#/components/schemas/SimulationFigure"
+        estimated_saving:
+          $ref: "#/components/schemas/SimulationFigure"
+        estimated_saving_percent:
+          type: number
+          nullable: true
+        quality_impact_percent:
+          type: number
+          nullable: true
+          description: >
+            Null when the registry has no measured quality score for a model in
+            the mix. Unknown quality is never treated as unchanged.
+        risk_level:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+        within_budget:
+          type: boolean
+          nullable: true
+          description: Null when either the budget or the simulated cost is unknown.
+        unpriced_model_ids:
+          type: array
+          items:
+            type: string
+          description: Models in the mix whose registry pricing is unknown.
+        assumptions:
+          type: array
+          items:
+            type: string
+          description: Plain-language statement of what the figures assume.
 
     OptimizationAnalyzeRequest:
       type: object

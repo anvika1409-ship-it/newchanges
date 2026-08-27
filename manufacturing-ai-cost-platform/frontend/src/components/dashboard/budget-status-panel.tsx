@@ -5,13 +5,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress, ProgressTrack, ProgressIndicator } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { formatCompactCurrency, formatPercent } from '@/lib/format'
+import { formatCompactCurrency, formatOptionalPercent } from '@/lib/format'
 import { useBudgetStatus } from '@/hooks/use-dashboard-data'
 import { PanelEmpty, PanelError } from './panel-states'
-import type { BudgetStatusItem } from '@/lib/types'
+import type { BudgetStatusItemView } from '@/lib/types'
 
-const STATUS_CONFIG: Record<BudgetStatusItem['status'], { label: string; badgeClass: string; barClass: string }> = {
-  ON_TRACK: { label: 'On track', badgeClass: 'bg-primary/15 text-primary border-primary/30', barClass: 'bg-primary' },
+const STATUS_CONFIG: Record<BudgetStatusItemView['status'], { label: string; badgeClass: string; barClass: string }> = {
+  // The contract's threshold states. 'ON_TRACK' was never one of them.
+  NORMAL: { label: 'Normal', badgeClass: 'bg-primary/15 text-primary border-primary/30', barClass: 'bg-primary' },
   WARNING: { label: 'Warning', badgeClass: 'bg-warning/15 text-warning border-warning/30', barClass: 'bg-warning' },
   CRITICAL: {
     label: 'Critical',
@@ -62,10 +63,13 @@ export function BudgetStatusPanel() {
                       </Badge>
                     </div>
                     <span className="font-mono text-sm tabular-nums text-muted-foreground">
-                      {formatPercent(item.consumed_percent)}
+                      {formatOptionalPercent(item.consumed_percent)}
                     </span>
                   </div>
-                  <Progress value={Math.min(item.consumed_percent, 100)} aria-label={`${item.scope_label} budget consumed`}>
+                  <Progress
+                    value={Math.min(item.consumed_percent ?? 0, 100)}
+                    aria-label={`${item.scope_label} budget consumed`}
+                  >
                     <ProgressTrack>
                       <ProgressIndicator className={config.barClass} />
                     </ProgressTrack>
@@ -73,11 +77,11 @@ export function BudgetStatusPanel() {
                   <div className="flex items-baseline justify-between text-xs text-muted-foreground">
                     <span>
                       {formatCompactCurrency(item.consumed_amount, item.currency)} of{' '}
-                      {formatCompactCurrency(item.amount, item.currency)} ({item.period.toLowerCase()})
+                      {formatCompactCurrency(item.amount, item.currency)}
                     </span>
-                    {item.projected_overrun_amount > 0 && (
-                      <span className="text-warning">
-                        +{formatCompactCurrency(item.projected_overrun_amount, item.currency)} projected overrun
+                    {item.unevaluable_reason && (
+                      <span className="text-warning" title="This budget could not be evaluated">
+                        not evaluable: {item.unevaluable_reason}
                       </span>
                     )}
                   </div>

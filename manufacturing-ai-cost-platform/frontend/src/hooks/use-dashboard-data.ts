@@ -1,13 +1,29 @@
 import useSWR from 'swr';
+import {
+  toAnomalyView,
+  toBudgetStatusView,
+  toCostSummaryView,
+  toCostTrendView,
+  toForecastView,
+  toOptimizationViews,
+  toWorkloadViews,
+} from '../lib/adapters';
 import type {
-  Anomaly,
+  AnomalyList,
+  AnomalyView,
   ApiEnvelope,
-  BudgetStatus,
+  BudgetStatusList,
+  BudgetStatusView,
   CostSummary,
+  CostSummaryView,
   CostTrend,
-  Forecast,
-  OptimizationRecommendation,
-  Workload,
+  CostTrendView,
+  ForecastList,
+  ForecastView,
+  OptimizationRecommendationList,
+  OptimizationRecommendationView,
+  WorkloadList,
+  WorkloadView,
 } from '../lib/types';
 import {
   getMockAnomalies,
@@ -26,14 +42,22 @@ import { apiClient, ApiRequestError } from '../services/apiClient';
  * Per ARCHITECTURE.md section 7, the frontend never talks to GenAILab or the
  * database directly; it only calls the FastAPI backend under `/api/v1`,
  * reached at the same origin (Vite dev proxy locally, nginx reverse proxy in
- * production — see vite.config.ts / nginx.conf). No server-side bridge or
- * secret lives in this bundle (AI_DEVELOPMENT_RULES.md section 19).
+ * production). No server-side bridge or secret lives in this bundle
+ * (AI_DEVELOPMENT_RULES.md section 19).
+ *
+ * Each hook fetches the **wire shape** defined in API_CONTRACT.yaml and runs it
+ * through an adapter from `lib/adapters.ts` before handing a view model to the
+ * components. Fetching the contract shape is what keeps the types honest: a
+ * response that stops matching the contract now fails here rather than being
+ * absorbed by a hand-written type that happens to describe the component's
+ * needs.
  *
  * If the backend is unreachable (e.g. exploring the UI before the backend is
- * deployed), each hook falls back to local fixture data and labels the
- * envelope `source: 'demo'` so the UI can show a "Demo data" indicator
- * instead of silently presenting invented numbers as real
- * (AI_DEVELOPMENT_RULES.md sections 41-42).
+ * deployed), each hook falls back to local fixture data and labels the envelope
+ * `source: 'demo'` so the UI can show a "Demo data" indicator instead of
+ * silently presenting invented numbers as real
+ * (AI_DEVELOPMENT_RULES.md sections 41-42). The fixtures are themselves in the
+ * contract's wire shape, so demo mode exercises the same adapters as live data.
  */
 
 const swrConfig = {
@@ -57,81 +81,126 @@ function toQuery(params: Record<string, string | undefined>): Record<string, str
 }
 
 /**
- * Fetches `path` from the real backend. On any failure (network error,
- * non-2xx, timeout) resolves the supplied fixture instead, tagged as demo
- * data, so the dashboard stays explorable before the backend is wired up.
+ * Fetches `path`, adapts the wire response to a view model, and tags the origin.
+ *
+ * On an unreachable backend the fixture is used instead. A backend that is
+ * reachable but genuinely errors (e.g. 500, 403) still surfaces as an error —
+ * masking a real failure as demo data would hide an outage behind plausible
+ * numbers.
  */
-async function fetchWithFallback<T>(
+async function fetchWithFallback<TWire, TView>(
   path: string,
   query: Record<string, string>,
-  mockFactory: () => T,
-): Promise<ApiEnvelope<T>> {
+  mockFactory: () => TWire,
+  adapt: (wire: TWire) => TView,
+): Promise<ApiEnvelope<TView>> {
   try {
-    const data = await apiClient.get<T>(path, { query });
-    return { data, source: 'live', fetched_at: new Date().toISOString() };
+    const wire = await apiClient.get<TWire>(path, { query });
+    return { data: adapt(wire), source: 'live', fetched_at: new Date().toISOString() };
   } catch (err) {
-    // A real backend that is reachable but genuinely errors (e.g. 500) should
-    // still surface as an error rather than being masked as demo data.
     if (err instanceof ApiRequestError && err.status !== 0) {
       throw err;
     }
-    return { data: mockFactory(), source: 'demo', fetched_at: new Date().toISOString() };
+    return {
+      data: adapt(mockFactory()),
+      source: 'demo',
+      fetched_at: new Date().toISOString(),
+    };
   }
 }
 
 export function useCostSummary(filters: FilterParams = {}) {
   const query = toQuery({ plant_id: filters.plantId, department_id: filters.departmentId });
-  return useSWR<ApiEnvelope<CostSummary>>(
+  return useSWR<ApiEnvelope<CostSummaryView>>(
     ['/cost/summary', query],
-    () => fetchWithFallback('/cost/summary', query, getMockCostSummary),
+    () =>
+      fetchWithFallback<CostSummary, CostSummaryView>(
+        '/cost/summary',
+        query,
+        getMockCostSummary,
+        toCostSummaryView,
+      ),
     swrConfig,
   );
 }
 
 export function useCostTrend() {
-  return useSWR<ApiEnvelope<CostTrend>>(
+  return useSWR<ApiEnvelope<CostTrendView>>(
     '/cost/trend',
-    () => fetchWithFallback('/cost/trend', {}, getMockCostTrend),
+    () =>
+      fetchWithFallback<CostTrend, CostTrendView>(
+        '/cost/trend',
+        {},
+        getMockCostTrend,
+        toCostTrendView,
+      ),
     swrConfig,
   );
 }
 
 export function useBudgetStatus() {
-  return useSWR<ApiEnvelope<BudgetStatus>>(
+  return useSWR<ApiEnvelope<BudgetStatusView>>(
     '/budgets/status',
-    () => fetchWithFallback('/budgets/status', {}, getMockBudgetStatus),
+    () =>
+      fetchWithFallback<BudgetStatusList, BudgetStatusView>(
+        '/budgets/status',
+        {},
+        getMockBudgetStatus,
+        toBudgetStatusView,
+      ),
     swrConfig,
   );
 }
 
 export function useForecast() {
-  return useSWR<ApiEnvelope<Forecast>>(
+  return useSWR<ApiEnvelope<ForecastView>>(
     '/forecasts',
-    () => fetchWithFallback('/forecasts', {}, getMockForecast),
+    () =>
+      fetchWithFallback<ForecastList, ForecastView>(
+        '/forecasts',
+        {},
+        getMockForecast,
+        toForecastView,
+      ),
     swrConfig,
   );
 }
 
 export function useAnomalies() {
-  return useSWR<ApiEnvelope<Anomaly[]>>(
+  return useSWR<ApiEnvelope<AnomalyView[]>>(
     '/anomalies',
-    () => fetchWithFallback('/anomalies', {}, getMockAnomalies),
+    () =>
+      fetchWithFallback<AnomalyList, AnomalyView[]>('/anomalies', {}, getMockAnomalies, (wire) =>
+        wire.items.map(toAnomalyView),
+      ),
     swrConfig,
   );
 }
 
 export function useOptimizationRecommendations() {
-  return useSWR<ApiEnvelope<OptimizationRecommendation[]>>(
+  return useSWR<ApiEnvelope<OptimizationRecommendationView[]>>(
     '/optimization/recommendations',
-    () => fetchWithFallback('/optimization/recommendations', {}, getMockOptimizationRecommendations),
+    () =>
+      fetchWithFallback<OptimizationRecommendationList, OptimizationRecommendationView[]>(
+        '/optimization/recommendations',
+        {},
+        getMockOptimizationRecommendations,
+        toOptimizationViews,
+      ),
     swrConfig,
   );
 }
 
 export function useWorkloads() {
-  return useSWR<ApiEnvelope<Workload[]>>(
+  return useSWR<ApiEnvelope<WorkloadView[]>>(
     '/workloads',
-    () => fetchWithFallback('/workloads', {}, getMockWorkloads),
+    () =>
+      fetchWithFallback<WorkloadList, WorkloadView[]>(
+        '/workloads',
+        {},
+        getMockWorkloads,
+        (wire) => toWorkloadViews(wire),
+      ),
     swrConfig,
   );
 }

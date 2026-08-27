@@ -4,20 +4,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { formatCompactCurrency } from '@/lib/format'
+import { formatOptionalCurrency } from '@/lib/format'
 import { useOptimizationRecommendations } from '@/hooks/use-dashboard-data'
 import { PanelEmpty, PanelError } from './panel-states'
 import { ProvenanceBadge } from './provenance-badge'
-import type { OptimizationRecommendation } from '@/lib/types'
+import type { OptimizationRecommendationView } from '@/lib/types'
 
-const STATUS_LABEL: Record<OptimizationRecommendation['status'], string> = {
-  PROPOSED: 'Proposed',
+// Lifecycle states from DATABASE_SCHEMA.md section 18. The previous map used
+// PROPOSED, which no endpoint returns.
+const STATUS_LABEL: Record<OptimizationRecommendationView['status'], string> = {
+  DRAFT: 'Draft',
+  PENDING_APPROVAL: 'Pending approval',
   APPROVED: 'Approved',
-  APPLIED: 'Applied',
   REJECTED: 'Rejected',
+  APPLIED: 'Applied',
+  ROLLED_BACK: 'Rolled back',
 }
 
-const RISK_CLASS: Record<OptimizationRecommendation['risk_level'], string> = {
+const RISK_CLASS: Record<OptimizationRecommendationView['risk_level'], string> = {
   LOW: 'border-primary/30 bg-primary/10 text-primary',
   MEDIUM: 'border-warning/30 bg-warning/10 text-warning',
   HIGH: 'border-destructive/30 bg-destructive/10 text-destructive',
@@ -55,7 +59,7 @@ export function OptimizationPanel() {
                     <span className="text-xs text-muted-foreground">{rec.workload_label}</span>
                   </div>
                   <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-primary">
-                    {formatCompactCurrency(rec.estimated_saving_amount, rec.currency)}
+                    {formatOptionalCurrency(rec.estimated_saving_amount, rec.currency)}
                   </span>
                 </div>
                 <p className="text-sm text-muted-foreground">{rec.description}</p>

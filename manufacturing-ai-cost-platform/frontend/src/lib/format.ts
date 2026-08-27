@@ -106,3 +106,41 @@ export function formatRelativeTime(iso: string): string {
   const diffDays = Math.round(diffHours / 24)
   return rtf.format(diffDays, 'day')
 }
+
+/**
+ * Helpers for values the API could not supply.
+ *
+ * A missing figure renders as an em dash so it stays visibly missing. Rendering
+ * 0 would read as "free" or "no change", which is the specific confusion the
+ * provenance rules exist to prevent (AI_DEVELOPMENT_RULES.md sections 41-42).
+ */
+export const NOT_AVAILABLE = '\u2014'
+
+export function formatOptionalCurrency(
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+): string {
+  if (amount === null || amount === undefined) return NOT_AVAILABLE
+  return formatCompactCurrency(amount, currency ?? 'USD')
+}
+
+export function formatOptionalNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) return NOT_AVAILABLE
+  return formatCompactNumber(value)
+}
+
+export function formatOptionalPercent(
+  value: number | null | undefined,
+  fractionDigits = 1,
+): string {
+  if (value === null || value === undefined) return NOT_AVAILABLE
+  return formatPercent(value, fractionDigits)
+}
+
+export function formatOptionalSignedPercent(
+  value: number | null | undefined,
+  fractionDigits = 0,
+): string {
+  if (value === null || value === undefined) return NOT_AVAILABLE
+  return formatSignedPercent(value, fractionDigits)
+}

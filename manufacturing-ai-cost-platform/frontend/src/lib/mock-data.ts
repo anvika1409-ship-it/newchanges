@@ -1,350 +1,326 @@
-import type {
-  Anomaly,
-  BudgetStatus,
-  CostSummary,
-  CostTrend,
-  Forecast,
-  OptimizationRecommendation,
-  Workload,
-} from './types'
-
 /**
- * Demo fixtures returned by the internal /api/v1/* route handlers when
- * BACKEND_API_BASE_URL is not configured. Shapes follow API_CONTRACT.yaml.
- * This is clearly demo data, never presented as ACTUAL provenance for
- * anything the contract defines as a live figure.
+ * Demo fixtures.
+ *
+ * Every factory returns the **wire shape** defined in API_CONTRACT.yaml, not a
+ * shape convenient for a component. That is deliberate: fixtures that diverge
+ * from the contract are how the previous types drifted — the mocks compiled,
+ * the components rendered, and nobody noticed the API returned something else
+ * entirely. Demo mode now runs through the same adapters as live data, so a
+ * contract change breaks both together.
+ *
+ * These values are illustrative and are always surfaced with
+ * `source: 'demo'` so the UI can label them. They are never presented as real
+ * operational data (AI_DEVELOPMENT_RULES.md sections 41 and 42).
  */
 
-const CURRENCY = 'INR'
+import type {
+  AnomalyList,
+  BudgetStatusList,
+  CostSummary,
+  CostTrend,
+  ForecastList,
+  OptimizationRecommendationList,
+  PageInfo,
+  WorkloadList,
+} from './types'
 
-function daysAgoIso(days: number, hour = 6): string {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() - days)
-  d.setUTCHours(hour, 0, 0, 0)
-  return d.toISOString()
+const CURRENCY = 'USD'
+
+function page(total: number): PageInfo {
+  return { total, limit: 50, offset: 0 }
+}
+
+/** Hours ago, as an ISO timestamp. */
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 3_600_000).toISOString()
+}
+
+/** Days ahead, as a date-only string. */
+function daysAhead(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
 }
 
 export function getMockCostSummary(): CostSummary {
   return {
-    total_cost: 4218430,
+    actual_cost: 12_480.55,
+    estimated_cost: 1_920.4,
+    unavailable_cost_events: 37,
     currency: CURRENCY,
-    total_requests: 128940,
-    total_tokens: 812_400_000,
-    average_cost_per_request: 32.71,
-    budget_consumed_percent: 78.4,
-    projected_month_end_cost: 5240000,
-    today_cost: 168230,
-    month_to_date_cost: 4218430,
-    provenance: 'ACTUAL',
-    generated_at: new Date().toISOString(),
+    total_requests: 184_209,
+    total_tokens: 96_412_880,
+    average_cost_per_request: 0.0782,
+    budget_consumed_percent: 72.4,
+    forecast_month_end_cost: 19_850.0,
   }
 }
 
 export function getMockCostTrend(): CostTrend {
-  const points = Array.from({ length: 30 }, (_, i) => {
-    const dayIndex = 29 - i
-    const base = 120000 + Math.sin(i / 3) * 25000 + i * 1800
-    const isForecast = dayIndex < 0
+  const points = Array.from({ length: 14 }, (_, index) => {
+    const day = 13 - index
+    const actual = 780 + Math.round(Math.sin(index / 2) * 120) + index * 12
     return {
-      timestamp: daysAgoIso(dayIndex),
-      cost: Math.round(base),
-      provenance: 'ACTUAL' as const,
+      bucket_start: new Date(Date.now() - day * 86_400_000).toISOString(),
+      actual_cost: actual,
+      estimated_cost: Math.round(actual * 0.14),
+      currency: CURRENCY,
+      total_requests: 11_500 + index * 180,
+      total_tokens: 6_100_000 + index * 90_000,
     }
   })
+  return { granularity: 'day', points }
+}
 
-  // Append a short forward-looking forecast tail distinct from actuals.
-  const forecastTail = Array.from({ length: 7 }, (_, i) => {
-    const lastActual = points[points.length - 1].cost
-    const projected = lastActual + (i + 1) * 4200
-    const d = new Date()
-    d.setUTCDate(d.getUTCDate() + i + 1)
-    d.setUTCHours(6, 0, 0, 0)
+export function getMockBudgetStatus(): BudgetStatusList {
+  const items: BudgetStatusList['items'] = [
+    {
+      budget_id: 'bud-ent-001',
+      scope_type: 'ENTERPRISE',
+      scope_id: 'enterprise',
+      amount: 20_000,
+      consumed_actual_cost: 12_480.55,
+      consumed_estimated_cost: 1_920.4,
+      consumed_percent: 72.0,
+      currency: CURRENCY,
+      threshold_state: 'WARNING',
+    },
+    {
+      budget_id: 'bud-plant-01',
+      scope_type: 'PLANT',
+      scope_id: 'plant-chennai-01',
+      amount: 8_000,
+      consumed_actual_cost: 7_640.2,
+      consumed_estimated_cost: 240.0,
+      consumed_percent: 98.5,
+      currency: CURRENCY,
+      threshold_state: 'CRITICAL',
+    },
+    {
+      budget_id: 'bud-plant-02',
+      scope_type: 'PLANT',
+      scope_id: 'plant-pune-02',
+      amount: 6_000,
+      consumed_actual_cost: 2_310.9,
+      consumed_estimated_cost: 180.5,
+      consumed_percent: 41.5,
+      currency: CURRENCY,
+      threshold_state: 'NORMAL',
+    },
+    {
+      budget_id: 'bud-dept-qa',
+      scope_type: 'DEPARTMENT',
+      scope_id: 'dept-quality-assurance',
+      amount: 4_000,
+      consumed_actual_cost: 4_310.0,
+      consumed_estimated_cost: 95.0,
+      consumed_percent: 110.1,
+      currency: CURRENCY,
+      threshold_state: 'EXCEEDED',
+    },
+    {
+      // A budget the platform could not evaluate. Reported, not hidden, and not
+      // silently treated as healthy.
+      budget_id: 'bud-model-vision',
+      scope_type: 'MODEL',
+      scope_id: 'model-vision-primary',
+      amount: 2_500,
+      consumed_actual_cost: 0,
+      consumed_estimated_cost: 0,
+      consumed_percent: null,
+      currency: CURRENCY,
+      threshold_state: 'NORMAL',
+      unevaluable_reason: 'no_cost_events_recorded',
+    },
+  ]
+  return { items, page: page(items.length) }
+}
+
+export function getMockForecast(): ForecastList {
+  const items = Array.from({ length: 14 }, (_, index) => {
+    const predicted = 820 + index * 26
     return {
-      timestamp: d.toISOString(),
-      cost: Math.round(projected),
+      id: `fc-${index + 1}`,
+      scope_type: 'TENANT',
+      scope_id: 'tenant-demo',
+      forecast_date: daysAhead(index + 1),
+      predicted_cost: predicted,
+      lower_bound: Math.round(predicted * 0.86),
+      upper_bound: Math.round(predicted * 1.15),
+      confidence: 0.82,
+      forecast_model_name: 'seasonal-naive',
+      forecast_model_version: '0.1.0',
       provenance: 'FORECAST' as const,
     }
   })
-
-  return {
-    granularity: 'day',
-    currency: CURRENCY,
-    points: [...points, ...forecastTail],
-  }
+  return { items, page: page(items.length) }
 }
 
-export function getMockBudgetStatus(): BudgetStatus {
-  return {
-    currency: CURRENCY,
-    items: [
-      {
-        scope_type: 'ENTERPRISE',
-        scope_id: 'ent-01',
-        scope_label: 'Enterprise-wide AI budget',
-        period: 'MONTHLY',
-        amount: 5400000,
-        currency: CURRENCY,
-        consumed_amount: 4218430,
-        consumed_percent: 78.1,
-        warning_threshold_percent: 80,
-        critical_threshold_percent: 95,
-        projected_overrun_amount: 0,
-        projected_overrun_percent: -3,
-        status: 'ON_TRACK',
-      },
-      {
-        scope_type: 'PLANT',
-        scope_id: 'plant-pune',
-        scope_label: 'Pune Assembly Plant',
-        period: 'MONTHLY',
-        amount: 1200000,
-        currency: CURRENCY,
-        consumed_amount: 1092000,
-        consumed_percent: 91,
-        warning_threshold_percent: 80,
-        critical_threshold_percent: 95,
-        projected_overrun_amount: 84000,
-        projected_overrun_percent: 7,
-        status: 'WARNING',
-      },
-      {
-        scope_type: 'PLANT',
-        scope_id: 'plant-chennai',
-        scope_label: 'Chennai Powertrain Plant',
-        period: 'MONTHLY',
-        amount: 950000,
-        currency: CURRENCY,
-        consumed_amount: 946500,
-        consumed_percent: 99.6,
-        warning_threshold_percent: 80,
-        critical_threshold_percent: 95,
-        projected_overrun_amount: 156000,
-        projected_overrun_percent: 16.4,
-        status: 'CRITICAL',
-      },
-      {
-        scope_type: 'DEPARTMENT',
-        scope_id: 'dept-quality',
-        scope_label: 'Quality Engineering',
-        period: 'MONTHLY',
-        amount: 680000,
-        currency: CURRENCY,
-        consumed_amount: 401200,
-        consumed_percent: 59,
-        warning_threshold_percent: 80,
-        critical_threshold_percent: 95,
-        projected_overrun_amount: 0,
-        projected_overrun_percent: -18,
-        status: 'ON_TRACK',
-      },
-    ],
-  }
-}
-
-export function getMockForecast(): Forecast {
-  const points = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date()
-    d.setUTCDate(d.getUTCDate() + i + 1)
-    d.setUTCHours(6, 0, 0, 0)
-    const base = 175000 + i * 3600
-    return {
-      timestamp: d.toISOString(),
-      forecast_cost: Math.round(base),
-      lower_bound: Math.round(base * 0.88),
-      upper_bound: Math.round(base * 1.14),
-    }
-  })
-
-  return {
-    horizon_days: 30,
-    currency: CURRENCY,
-    model_confidence: 0.86,
-    points,
-    provenance: 'FORECAST',
-  }
-}
-
-export function getMockAnomalies(): Anomaly[] {
-  return [
+export function getMockAnomalies(): AnomalyList {
+  const items: AnomalyList['items'] = [
     {
-      id: 'anom-2201',
-      detected_at: daysAgoIso(0, 3),
-      severity: 'CRITICAL',
+      id: 'anom-001',
+      timestamp: hoursAgo(3),
       scope_type: 'PLANT',
-      scope_label: 'Chennai Powertrain Plant',
-      metric: 'hourly_ai_spend',
-      expected_value: 8200,
-      observed_value: 26400,
-      deviation_percent: 222,
-      currency: CURRENCY,
-      summary:
-        'Predictive maintenance workload spend spiked 3.2x above baseline after a model fallback to a higher-cost provider.',
+      scope_id: 'plant-chennai-01',
+      anomaly_type: 'cost_spike',
+      severity: 'CRITICAL',
+      expected_value: 310.0,
+      actual_value: 1_240.6,
+      deviation_percent: 300.2,
+      reason: 'Vision workload retried repeatedly against a higher-cost model.',
       status: 'OPEN',
+      resolved_at: null,
     },
     {
-      id: 'anom-2198',
-      detected_at: daysAgoIso(1, 14),
-      severity: 'HIGH',
-      scope_type: 'WORKLOAD',
-      scope_label: 'Supply Chain Risk Scoring',
-      metric: 'cost_per_request',
-      expected_value: 4.1,
-      observed_value: 11.6,
-      deviation_percent: 183,
-      currency: CURRENCY,
-      summary: 'Average cost per request nearly tripled following a routing policy change at 14:05 IST.',
-      status: 'ACKNOWLEDGED',
-    },
-    {
-      id: 'anom-2190',
-      detected_at: daysAgoIso(2, 9),
-      severity: 'MEDIUM',
-      scope_type: 'DEPARTMENT',
-      scope_label: 'Quality Engineering',
-      metric: 'token_usage',
-      expected_value: 1_200_000,
-      observed_value: 1_640_000,
-      deviation_percent: 37,
-      currency: CURRENCY,
-      summary: 'Token consumption for defect-image analysis trended above the 7-day baseline for two consecutive shifts.',
-      status: 'OPEN',
-    },
-    {
-      id: 'anom-2183',
-      detected_at: daysAgoIso(4, 21),
-      severity: 'LOW',
+      id: 'anom-002',
+      timestamp: hoursAgo(9),
       scope_type: 'MODEL',
-      scope_label: 'vision-defect-classifier-v3',
-      metric: 'latency_cost_ratio',
-      expected_value: 0.9,
-      observed_value: 1.2,
-      deviation_percent: 33,
-      currency: CURRENCY,
-      summary: 'Minor increase in cost-per-latency ratio, within acceptable operating range but trending upward.',
+      scope_id: 'model-reasoning-large',
+      anomaly_type: 'token_volume',
+      severity: 'HIGH',
+      expected_value: 4_200_000,
+      actual_value: 7_950_000,
+      deviation_percent: 89.3,
+      reason: 'Context length grew after a prompt change.',
+      status: 'ACKNOWLEDGED',
+      resolved_at: null,
+    },
+    {
+      id: 'anom-003',
+      timestamp: hoursAgo(26),
+      scope_type: 'DEPARTMENT',
+      scope_id: 'dept-maintenance',
+      anomaly_type: 'latency',
+      severity: 'MEDIUM',
+      expected_value: 1_850,
+      actual_value: 3_020,
+      deviation_percent: 63.2,
+      reason: 'Provider latency rose during a regional incident.',
       status: 'RESOLVED',
+      resolved_at: hoursAgo(20),
+    },
+    {
+      id: 'anom-004',
+      timestamp: hoursAgo(40),
+      scope_type: 'WORKLOAD',
+      scope_id: 'wl-supply-chain',
+      anomaly_type: 'cost_per_request',
+      severity: 'LOW',
+      expected_value: 0.071,
+      actual_value: 0.089,
+      deviation_percent: 25.4,
+      reason: 'Mix shifted toward a higher-cost model.',
+      status: 'OPEN',
+      resolved_at: null,
     },
   ]
+  return { items, page: page(items.length) }
 }
 
-export function getMockOptimizationRecommendations(): OptimizationRecommendation[] {
-  return [
+export function getMockOptimizationRecommendations(): OptimizationRecommendationList {
+  const items: OptimizationRecommendationList['items'] = [
     {
-      id: 'opt-9001',
-      workload_id: 'wl-quality-defect-vision',
-      workload_label: 'Defect Vision Inspection',
-      title: 'Downgrade routine inspections to a smaller vision model',
-      description:
-        'Simulation shows 41% of quality_check requests can route to a lower-cost model with no measurable drop in detection accuracy.',
-      estimated_saving_amount: 186000,
-      estimated_saving_percent: 22,
-      currency: CURRENCY,
-      risk_level: 'LOW',
-      status: 'PROPOSED',
-      simulation_only: true,
-      provenance: 'SIMULATED',
-    },
-    {
-      id: 'opt-8994',
-      workload_id: 'wl-predictive-maintenance-core',
-      workload_label: 'Predictive Maintenance Core',
-      title: 'Cache repeated sensor-pattern lookups',
-      description: 'Deduplicating near-identical sensor windows before model calls reduces redundant executions.',
-      estimated_saving_amount: 94500,
-      estimated_saving_percent: 11,
-      currency: CURRENCY,
-      risk_level: 'LOW',
-      status: 'APPROVED',
-      simulation_only: true,
-      provenance: 'SIMULATED',
-    },
-    {
-      id: 'opt-8977',
-      workload_id: 'wl-supply-chain-risk',
-      workload_label: 'Supply Chain Risk Scoring',
-      title: 'Batch low-priority supplier risk checks',
-      description: 'Grouping non-urgent scoring requests into hourly batches cuts per-request overhead materially.',
-      estimated_saving_amount: 62000,
-      estimated_saving_percent: 9,
-      currency: CURRENCY,
+      id: 'rec-001',
+      workload_id: 'wl-quality-check',
+      current_strategy: 'All inspections on the high-capability vision model',
+      recommended_strategy: 'Route simple inspections to the lower-cost vision model',
+      estimated_saving: 3_180.0,
+      estimated_saving_percent: 24.6,
+      quality_impact_percent: -0.8,
+      latency_impact_percent: -12.0,
       risk_level: 'MEDIUM',
-      status: 'APPLIED',
-      simulation_only: false,
+      recommendation_reason:
+        'Simple single-part images account for 61% of volume and were classified SIMPLE.',
+      status: 'PENDING_APPROVAL',
+      provenance: 'SIMULATED',
+      applied_policy_id: null,
+      superseded_policy_id: null,
+      created_at: hoursAgo(6),
+      approved_at: null,
+      applied_at: null,
+      rolled_back_at: null,
+      approved_by: null,
+    },
+    {
+      id: 'rec-002',
+      workload_id: 'wl-maintenance',
+      current_strategy: 'Full sensor history in every prompt',
+      recommended_strategy: 'Trim context to the last 24 hours plus anomalies',
+      estimated_saving: 1_420.5,
+      estimated_saving_percent: 18.2,
+      quality_impact_percent: null,
+      latency_impact_percent: -8.5,
+      risk_level: 'LOW',
+      recommendation_reason: 'Median prompt carries 3.2x the context the model uses.',
+      status: 'APPROVED',
       provenance: 'ESTIMATED',
+      applied_policy_id: null,
+      superseded_policy_id: null,
+      created_at: hoursAgo(30),
+      approved_at: hoursAgo(4),
+      applied_at: null,
+      rolled_back_at: null,
+      approved_by: 'finops-lead',
+    },
+    {
+      id: 'rec-003',
+      workload_id: 'wl-supply-chain',
+      current_strategy: 'Single-pass reasoning on every request',
+      recommended_strategy: 'Cache supplier lookups for 6 hours',
+      estimated_saving: 890.0,
+      estimated_saving_percent: 11.4,
+      quality_impact_percent: 0.0,
+      latency_impact_percent: -31.0,
+      risk_level: 'LOW',
+      recommendation_reason: 'Supplier data changes far less often than it is queried.',
+      status: 'APPLIED',
+      provenance: 'ESTIMATED',
+      applied_policy_id: 'pol-supply-v4',
+      superseded_policy_id: 'pol-supply-v3',
+      created_at: hoursAgo(96),
+      approved_at: hoursAgo(72),
+      applied_at: hoursAgo(70),
+      rolled_back_at: null,
+      approved_by: 'finops-lead',
     },
   ]
+  return { items, page: page(items.length) }
 }
 
-export function getMockWorkloads(): Workload[] {
-  return [
+export function getMockWorkloads(): WorkloadList {
+  const items: WorkloadList['items'] = [
     {
-      id: 'wl-quality-defect-vision',
+      id: 'wl-quality-check',
+      plant_id: 'plant-chennai-01',
+      department_id: 'dept-quality-assurance',
+      name: 'Surface defect inspection',
       workload_type: 'quality_check',
-      label: 'Defect Vision Inspection',
-      plant_id: 'plant-chennai',
-      plant_label: 'Chennai Powertrain Plant',
-      department_label: 'Quality Engineering',
-      total_cost: 846200,
-      currency: CURRENCY,
-      request_count: 41230,
-      average_cost_per_request: 20.53,
-      trend_percent: 14.2,
-      provenance: 'ACTUAL',
+      description: 'Multimodal inspection of finished components.',
+      business_priority: 'HIGH',
+      risk_level: 'HIGH',
+      status: 'ACTIVE',
     },
     {
-      id: 'wl-predictive-maintenance-core',
+      id: 'wl-maintenance',
+      plant_id: 'plant-pune-02',
+      department_id: 'dept-maintenance',
+      name: 'Spindle failure prediction',
       workload_type: 'predictive_maintenance',
-      label: 'Predictive Maintenance Core',
-      plant_id: 'plant-chennai',
-      plant_label: 'Chennai Powertrain Plant',
-      department_label: 'Reliability Engineering',
-      total_cost: 812900,
-      currency: CURRENCY,
-      request_count: 18760,
-      average_cost_per_request: 43.33,
-      trend_percent: 31.6,
-      provenance: 'ACTUAL',
+      description: 'Anomaly detection plus reasoning over maintenance history.',
+      business_priority: 'CRITICAL',
+      risk_level: 'CRITICAL',
+      status: 'ACTIVE',
     },
     {
-      id: 'wl-supply-chain-risk',
+      id: 'wl-supply-chain',
+      plant_id: 'plant-chennai-01',
+      department_id: 'dept-logistics',
+      name: 'Supplier routing advisor',
       workload_type: 'supply_chain',
-      label: 'Supply Chain Risk Scoring',
-      plant_id: 'plant-pune',
-      plant_label: 'Pune Assembly Plant',
-      department_label: 'Procurement',
-      total_cost: 598400,
-      currency: CURRENCY,
-      request_count: 52100,
-      average_cost_per_request: 11.49,
-      trend_percent: -4.8,
-      provenance: 'ACTUAL',
-    },
-    {
-      id: 'wl-quality-torque-audit',
-      workload_type: 'quality_check',
-      label: 'Torque Audit Verification',
-      plant_id: 'plant-pune',
-      plant_label: 'Pune Assembly Plant',
-      department_label: 'Quality Engineering',
-      total_cost: 421700,
-      currency: CURRENCY,
-      request_count: 30880,
-      average_cost_per_request: 13.65,
-      trend_percent: 2.1,
-      provenance: 'ACTUAL',
-    },
-    {
-      id: 'wl-predictive-maintenance-hvac',
-      workload_type: 'predictive_maintenance',
-      label: 'HVAC Failure Prediction',
-      plant_id: 'plant-nashik',
-      plant_label: 'Nashik Component Plant',
-      department_label: 'Facilities',
-      total_cost: 287300,
-      currency: CURRENCY,
-      request_count: 9430,
-      average_cost_per_request: 30.47,
-      trend_percent: 6.4,
-      provenance: 'ACTUAL',
+      description: 'Ranks supplier and routing options against lead times.',
+      business_priority: 'NORMAL',
+      risk_level: 'MEDIUM',
+      status: 'ACTIVE',
     },
   ]
+  return { items, page: page(items.length) }
 }
